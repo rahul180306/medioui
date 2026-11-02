@@ -1,0 +1,1006 @@
+{
+  "version": 1,
+  "threads": [
+    {
+      "id": "thread-test-c-fix",
+      "title": "Fix Failing Test and Verify The Fix",
+      "projectId": "project-ad03bd388584e1b6d1e0",
+      "createdAt": 1791008733196,
+      "updatedAt": 1791008791157,
+      "model": "Configured by local runtime",
+      "branch": "main",
+      "approvalMode": "Approve for me",
+      "turns": [
+        {
+          "id": "turn-test-c-fix",
+          "threadId": "thread-test-c-fix",
+          "prompt": "Fix the failing test and verify the fix.",
+          "status": "completed",
+          "currentActivity": "thinking",
+          "createdAt": 1791008733190,
+          "items": [
+            {
+              "id": "user-1791008733190",
+              "turnId": "turn-test-c-fix",
+              "type": "user_message",
+              "timestamp": 1791008733190,
+              "text": "Fix the failing test and verify the fix."
+            },
+            {
+              "id": "f82f8000-34ce-44e1-a24a-09e60328dde2",
+              "turnId": "turn-test-c-fix",
+              "type": "activity",
+              "timestamp": 1791008733185,
+              "text": "Mediobot is working on the task.",
+              "activityLabel": "Mediobot is working on the task."
+            },
+            {
+              "id": "3c5f1177-7b68-4dd6-8c5c-0eac4e3f254c",
+              "turnId": "turn-test-c-fix",
+              "type": "activity",
+              "timestamp": 1791008733185,
+              "text": "Maestro task started.",
+              "activityLabel": "Maestro task started."
+            },
+            {
+              "id": "3969bd95-30d9-40ae-a007-c6cf4c878b6e",
+              "turnId": "turn-test-c-fix",
+              "type": "activity",
+              "timestamp": 1791008749017,
+              "text": "Maestro assigned Cody.",
+              "activityLabel": "Maestro assigned Cody."
+            },
+            {
+              "id": "74f31b84-fcf6-4722-8aa8-b74390fdedae",
+              "turnId": "turn-test-c-fix",
+              "type": "activity",
+              "timestamp": 1791008749018,
+              "text": "Cody started.",
+              "activityLabel": "Cody started."
+            },
+            {
+              "id": "aeaf0019-fc1d-4d64-b0f3-26519945bcfd",
+              "turnId": "turn-test-c-fix",
+              "type": "tool_execution",
+              "timestamp": 1791008756998,
+              "text": "Cody tool started.",
+              "tool": {
+                "toolName": "filesystem.list",
+                "status": "running"
+              }
+            },
+            {
+              "id": "a041043e-8a12-43b4-af6f-39557778246f",
+              "turnId": "turn-test-c-fix",
+              "type": "tool_execution",
+              "timestamp": 1791008757003,
+              "text": "Cody tool completed.",
+              "tool": {
+                "toolName": "filesystem.list",
+                "status": "success"
+              }
+            },
+            {
+              "id": "32f14a1b-12ce-47a3-af17-271fcdaae043",
+              "turnId": "turn-test-c-fix",
+              "type": "activity",
+              "timestamp": 1791008757004,
+              "text": "Cody progress.",
+              "activityLabel": "Cody progress."
+            },
+            {
+              "id": "a63e8236-2f5d-4c83-9eb5-efdb91eecab4",
+              "turnId": "turn-test-c-fix",
+              "type": "tool_execution",
+              "timestamp": 1791008759145,
+              "text": "Cody tool started.",
+              "tool": {
+                "toolName": "filesystem.list",
+                "status": "running"
+              }
+            },
+            {
+              "id": "29b5c2b9-ab74-45be-8181-9bfb31442d86",
+              "turnId": "turn-test-c-fix",
+              "type": "tool_execution",
+              "timestamp": 1791008759147,
+              "text": "Cody tool completed.",
+              "tool": {
+                "toolName": "filesystem.list",
+                "status": "success"
+              }
+            },
+            {
+              "id": "59183afa-2399-4170-9c18-c27a689202a0",
+              "turnId": "turn-test-c-fix",
+              "type": "activity",
+              "timestamp": 1791008759147,
+              "text": "Cody progress.",
+              "activityLabel": "Cody progress."
+            },
+            {
+              "id": "f3a3e810-e54f-4288-8b49-fcc1a6cb0eb7",
+              "turnId": "turn-test-c-fix",
+              "type": "tool_execution",
+              "timestamp": 1791008763322,
+              "text": "Cody tool started.",
+              "tool": {
+                "toolName": "filesystem.read",
+                "status": "running"
+              }
+            },
+            {
+              "id": "1cf504ad-65b1-45e7-b0dd-85751f0da70a",
+              "turnId": "turn-test-c-fix",
+              "type": "tool_execution",
+              "timestamp": 1791008763323,
+              "text": "Cody tool completed.",
+              "tool": {
+                "toolName": "filesystem.read",
+                "status": "success"
+              }
+            },
+            {
+              "id": "8d30895a-a337-4b13-9f6c-64fe5b2a49b1",
+              "turnId": "turn-test-c-fix",
+              "type": "activity",
+              "timestamp": 1791008763323,
+              "text": "Cody progress.",
+              "activityLabel": "Cody progress."
+            },
+            {
+              "id": "2bfee423-aadd-4c39-97a0-da4252f938c0",
+              "turnId": "turn-test-c-fix",
+              "type": "tool_execution",
+              "timestamp": 1791008766013,
+              "text": "Cody tool started.",
+              "tool": {
+                "toolName": "filesystem.read",
+                "status": "running"
+              }
+            },
+            {
+              "id": "4837f3a2-4797-4e73-9779-df4d097cf660",
+              "turnId": "turn-test-c-fix",
+              "type": "tool_execution",
+              "timestamp": 1791008766016,
+              "text": "Cody tool completed.",
+              "tool": {
+                "toolName": "filesystem.read",
+                "status": "success"
+              }
+            },
+            {
+              "id": "78900106-b710-403c-a477-039bfd8e9eeb",
+              "turnId": "turn-test-c-fix",
+              "type": "activity",
+              "timestamp": 1791008766016,
+              "text": "Cody progress.",
+              "activityLabel": "Cody progress."
+            },
+            {
+              "id": "2b946ab2-a03b-4218-ace2-ed4f75201d16",
+              "turnId": "turn-test-c-fix",
+              "type": "tool_execution",
+              "timestamp": 1791008768630,
+              "text": "Cody tool started.",
+              "tool": {
+                "toolName": "filesystem.read",
+                "status": "running"
+              }
+            },
+            {
+              "id": "a6e9f786-035e-4a6e-8b9c-4b06fd69d775",
+              "turnId": "turn-test-c-fix",
+              "type": "tool_execution",
+              "timestamp": 1791008768633,
+              "text": "Cody tool completed.",
+              "tool": {
+                "toolName": "filesystem.read",
+                "status": "success"
+              }
+            },
+            {
+              "id": "8eb4a439-0eed-4098-9fd9-d758d3c78616",
+              "turnId": "turn-test-c-fix",
+              "type": "activity",
+              "timestamp": 1791008768633,
+              "text": "Cody progress.",
+              "activityLabel": "Cody progress."
+            },
+            {
+              "id": "9f139b93-4376-4c92-8594-0f1169c0f845",
+              "turnId": "turn-test-c-fix",
+              "type": "tool_execution",
+              "timestamp": 1791008775557,
+              "text": "Cody tool started.",
+              "tool": {
+                "toolName": "filesystem.write",
+                "status": "running"
+              }
+            },
+            {
+              "id": "9300ff3c-a3b8-43cd-aeb3-5b2368fe331a",
+              "turnId": "turn-test-c-fix",
+              "type": "tool_execution",
+              "timestamp": 1791008775561,
+              "text": "Cody tool completed.",
+              "tool": {
+                "toolName": "filesystem.write",
+                "status": "success"
+              }
+            },
+            {
+              "id": "11f4c352-e432-46d1-81bb-07ff9c7ef878",
+              "turnId": "turn-test-c-fix",
+              "type": "activity",
+              "timestamp": 1791008775561,
+              "text": "Cody file changed.",
+              "activityLabel": "Cody file changed."
+            },
+            {
+              "id": "73ec0727-247a-44a6-bdce-8e338e2369de",
+              "turnId": "turn-test-c-fix",
+              "type": "tool_execution",
+              "timestamp": 1791008780006,
+              "text": "Cody tool started.",
+              "tool": {
+                "toolName": "filesystem.read",
+                "status": "running"
+              }
+            },
+            {
+              "id": "9f1261b9-e0e3-4aea-abb3-511ef7d1a9bf",
+              "turnId": "turn-test-c-fix",
+              "type": "tool_execution",
+              "timestamp": 1791008780009,
+              "text": "Cody tool completed.",
+              "tool": {
+                "toolName": "filesystem.read",
+                "status": "success"
+              }
+            },
+            {
+              "id": "719f0bd2-fa25-4a3f-9724-40871d1e6847",
+              "turnId": "turn-test-c-fix",
+              "type": "activity",
+              "timestamp": 1791008780010,
+              "text": "Cody progress.",
+              "activityLabel": "Cody progress."
+            },
+            {
+              "id": "31945e6a-4526-497e-80d3-37d887b120b7",
+              "turnId": "turn-test-c-fix",
+              "type": "tool_execution",
+              "timestamp": 1791008788584,
+              "text": "Cody tool started.",
+              "tool": {
+                "toolName": "terminal.execute",
+                "status": "running"
+              }
+            },
+            {
+              "id": "4d22cf19-128e-49d1-9cf2-9c85d57896c1",
+              "turnId": "turn-test-c-fix",
+              "type": "tool_execution",
+              "timestamp": 1791008788829,
+              "text": "Cody tool completed.",
+              "tool": {
+                "toolName": "terminal.execute",
+                "status": "success"
+              }
+            },
+            {
+              "id": "3a7fd9a7-8fef-4ba7-9e0e-683a4d28dce9",
+              "turnId": "turn-test-c-fix",
+              "type": "activity",
+              "timestamp": 1791008788829,
+              "text": "Cody progress.",
+              "activityLabel": "Cody progress."
+            },
+            {
+              "id": "76456fde-dfd6-4598-97f6-637159d08f73",
+              "turnId": "turn-test-c-fix",
+              "type": "activity",
+              "timestamp": 1791008791156,
+              "text": "Cody completed.",
+              "activityLabel": "Cody completed."
+            },
+            {
+              "id": "fc8fb9b4-013b-455c-b09f-36ee74e65643",
+              "turnId": "turn-test-c-fix",
+              "type": "activity",
+              "timestamp": 1791008791156,
+              "text": "Cody completed.",
+              "activityLabel": "Cody completed."
+            },
+            {
+              "id": "69a6b29c-a8f1-490c-bad4-bec85587e41e",
+              "turnId": "turn-test-c-fix",
+              "type": "diff",
+              "timestamp": 1791008791156,
+              "diff": {
+                "filePath": "src/math.ts",
+                "additions": 0,
+                "deletions": 0,
+                "hunks": [
+                  {
+                    "header": "@@ -1,4 +1,4 @@",
+                    "lines": [
+                      {
+                        "type": "context",
+                        "content": "export function add(a: number, b: number): number {",
+                        "oldLineNo": 1,
+                        "newLineNo": 1
+                      },
+                      {
+                        "type": "context",
+                        "content": "  return a + b;",
+                        "oldLineNo": 2,
+                        "newLineNo": 2
+                      },
+                      {
+                        "type": "context",
+                        "content": "}",
+                        "oldLineNo": 3,
+                        "newLineNo": 3
+                      },
+                      {
+                        "type": "context",
+                        "content": "",
+                        "oldLineNo": 4,
+                        "newLineNo": 4
+                      }
+                    ]
+                  }
+                ]
+              }
+            },
+            {
+              "id": "4c87e5bb-4b3f-4c56-8f81-e9f94ef5554e",
+              "turnId": "turn-test-c-fix",
+              "type": "agent_message",
+              "timestamp": 1791008791157,
+              "text": "Fixed the failing test in disposable-project-v2. The bug was in src/math.ts where the add function was using subtraction (a - b) instead of addition (a + b). After fixing the implementation to return a + b, the test passes successfully (1 pass, 0 fail)."
+            }
+          ],
+          "completedAt": 1791008791157
+        }
+      ]
+    },
+    {
+      "id": "thread-1791008543660",
+      "title": "What Framework/runtime Does This...",
+      "projectId": "project-ad03bd388584e1b6d1e0",
+      "createdAt": 1791008543660,
+      "updatedAt": 1791008588576,
+      "model": "MiniMax M2.7",
+      "branch": "",
+      "approvalMode": "Approve for me",
+      "turns": [
+        {
+          "id": "turn-1791008543660",
+          "threadId": "thread-1791008543660",
+          "prompt": "What framework/runtime does this project use? Inspect the project before answering.",
+          "status": "completed",
+          "currentActivity": "thinking",
+          "createdAt": 1791008543695,
+          "items": [
+            {
+              "id": "user-1791008543695",
+              "turnId": "turn-1791008543660",
+              "type": "user_message",
+              "timestamp": 1791008543695,
+              "text": "What framework/runtime does this project use? Inspect the project before answering."
+            },
+            {
+              "id": "5509ee70-0e0a-4a9e-b6a8-f2e14fe0a7a8",
+              "turnId": "turn-1791008543660",
+              "type": "activity",
+              "timestamp": 1791008543682,
+              "text": "Mediobot is working on the task.",
+              "activityLabel": "Mediobot is working on the task."
+            },
+            {
+              "id": "4adc369d-17af-4483-8b5c-82a654b16d9b",
+              "turnId": "turn-1791008543660",
+              "type": "activity",
+              "timestamp": 1791008543682,
+              "text": "Maestro task started.",
+              "activityLabel": "Maestro task started."
+            },
+            {
+              "id": "7e814623-7e4d-49db-8dc0-f6bacc124f7b",
+              "turnId": "turn-1791008543660",
+              "type": "activity",
+              "timestamp": 1791008556501,
+              "text": "Maestro assigned Cody.",
+              "activityLabel": "Maestro assigned Cody."
+            },
+            {
+              "id": "01e1a3ff-9a8e-466a-904d-cecd8badfb37",
+              "turnId": "turn-1791008543660",
+              "type": "activity",
+              "timestamp": 1791008556502,
+              "text": "Cody started.",
+              "activityLabel": "Cody started."
+            },
+            {
+              "id": "c147e9a7-b0af-4e3c-9afb-05b04cd5c190",
+              "turnId": "turn-1791008543660",
+              "type": "tool_execution",
+              "timestamp": 1791008561307,
+              "text": "Cody tool started.",
+              "tool": {
+                "toolName": "filesystem.list",
+                "status": "running"
+              }
+            },
+            {
+              "id": "a1e8cbb1-c812-46b6-8bef-719b9a3fc450",
+              "turnId": "turn-1791008543660",
+              "type": "tool_execution",
+              "timestamp": 1791008561310,
+              "text": "Cody tool completed.",
+              "tool": {
+                "toolName": "filesystem.list",
+                "status": "success"
+              }
+            },
+            {
+              "id": "45f739cd-e1ef-40da-a2fe-edea2f7b4c83",
+              "turnId": "turn-1791008543660",
+              "type": "activity",
+              "timestamp": 1791008561310,
+              "text": "Cody progress.",
+              "activityLabel": "Cody progress."
+            },
+            {
+              "id": "ae44e241-c662-4cab-93d7-52c0c7d5a202",
+              "turnId": "turn-1791008543660",
+              "type": "tool_execution",
+              "timestamp": 1791008574223,
+              "text": "Cody tool started.",
+              "tool": {
+                "toolName": "filesystem.read",
+                "status": "running"
+              }
+            },
+            {
+              "id": "07b15beb-5dbf-4ad8-a20f-5e8e5945a207",
+              "turnId": "turn-1791008543660",
+              "type": "tool_execution",
+              "timestamp": 1791008574227,
+              "text": "Cody tool completed.",
+              "tool": {
+                "toolName": "filesystem.read",
+                "status": "success"
+              }
+            },
+            {
+              "id": "99deab0a-c9e3-4fd1-af88-dce4f53fac76",
+              "turnId": "turn-1791008543660",
+              "type": "activity",
+              "timestamp": 1791008574227,
+              "text": "Cody progress.",
+              "activityLabel": "Cody progress."
+            },
+            {
+              "id": "12817b3b-e831-4293-986f-7e0a2b6a138c",
+              "turnId": "turn-1791008543660",
+              "type": "activity",
+              "timestamp": 1791008588568,
+              "text": "Cody completed.",
+              "activityLabel": "Cody completed."
+            },
+            {
+              "id": "69bd3f56-331e-420a-b545-cb975abf4042",
+              "turnId": "turn-1791008543660",
+              "type": "activity",
+              "timestamp": 1791008588574,
+              "text": "Cody completed.",
+              "activityLabel": "Cody completed."
+            },
+            {
+              "id": "aec87229-95d8-431c-a29c-71ca69385e95",
+              "turnId": "turn-1791008543660",
+              "type": "agent_message",
+              "timestamp": 1791008588575,
+              "text": "Framework/Runtime identified: Node.js 22. The package.json explicitly states 'Disposable Node.js 22 project for live verification'. The project uses ES modules ('type': 'module') and includes experimental TypeScript strip types support via the --experimental-strip-types flag in the test script."
+            }
+          ],
+          "completedAt": 1791008588576
+        }
+      ]
+    },
+    {
+      "id": "thread-1791007938651",
+      "title": "What Framework/runtime Does This...",
+      "projectId": "project-ad03bd388584e1b6d1e0",
+      "createdAt": 1791007938651,
+      "updatedAt": 1791008075621,
+      "model": "MiniMax M2.7",
+      "branch": "",
+      "approvalMode": "Approve for me",
+      "turns": [
+        {
+          "id": "turn-1791007938651",
+          "threadId": "thread-1791007938651",
+          "prompt": "What framework/runtime does this project use? Inspect the project before answering.",
+          "status": "failed",
+          "currentActivity": "thinking",
+          "createdAt": 1791007938695,
+          "items": [
+            {
+              "id": "user-1791007938695",
+              "turnId": "turn-1791007938651",
+              "type": "user_message",
+              "timestamp": 1791007938695,
+              "text": "What framework/runtime does this project use? Inspect the project before answering."
+            },
+            {
+              "id": "72d20e67-020f-4404-aeb9-c27ae48fe780",
+              "turnId": "turn-1791007938651",
+              "type": "activity",
+              "timestamp": 1791007938681,
+              "text": "Mediobot is working on the task.",
+              "activityLabel": "Mediobot is working on the task."
+            },
+            {
+              "id": "309977bf-989a-4eb7-8a40-5e93da628d2a",
+              "turnId": "turn-1791007938651",
+              "type": "activity",
+              "timestamp": 1791007938682,
+              "text": "Maestro task started.",
+              "activityLabel": "Maestro task started."
+            },
+            {
+              "id": "a9e42dac-787c-40bc-ba89-26b1d53cd1ba",
+              "turnId": "turn-1791007938651",
+              "type": "activity",
+              "timestamp": 1791007952143,
+              "text": "Maestro assigned Cody.",
+              "activityLabel": "Maestro assigned Cody."
+            },
+            {
+              "id": "595e2f49-9ca8-4c02-9c39-35dc011870e0",
+              "turnId": "turn-1791007938651",
+              "type": "activity",
+              "timestamp": 1791007952144,
+              "text": "Cody started.",
+              "activityLabel": "Cody started."
+            },
+            {
+              "id": "fc67ffe7-d145-406b-80c5-bd0327c6415f",
+              "turnId": "turn-1791007938651",
+              "type": "tool_execution",
+              "timestamp": 1791007953372,
+              "text": "Cody tool started.",
+              "tool": {
+                "toolName": "filesystem.list",
+                "status": "running"
+              }
+            },
+            {
+              "id": "4b2bb8ea-5cf5-4025-b255-7cd9d7d11e37",
+              "turnId": "turn-1791007938651",
+              "type": "tool_execution",
+              "timestamp": 1791007953375,
+              "text": "Cody tool completed.",
+              "tool": {
+                "toolName": "filesystem.list",
+                "status": "success"
+              }
+            },
+            {
+              "id": "f61fe9a3-cbc3-439a-9f2a-41940e096207",
+              "turnId": "turn-1791007938651",
+              "type": "activity",
+              "timestamp": 1791007953375,
+              "text": "Cody progress.",
+              "activityLabel": "Cody progress."
+            },
+            {
+              "id": "6635e5e1-3dfd-4c37-8e86-e59e003549b3",
+              "turnId": "turn-1791007938651",
+              "type": "activity",
+              "timestamp": 1791007954722,
+              "text": "internal runtime failure",
+              "activityLabel": "internal runtime failure"
+            }
+          ],
+          "completedAt": 1791007954722
+        },
+        {
+          "id": "turn-1791008003452",
+          "threadId": "thread-1791007938651",
+          "prompt": "What framework/runtime does this project use? Inspect the project before answering.",
+          "status": "failed",
+          "currentActivity": "thinking",
+          "createdAt": 1791008003482,
+          "items": [
+            {
+              "id": "user-1791008003482",
+              "turnId": "turn-1791008003452",
+              "type": "user_message",
+              "timestamp": 1791008003482,
+              "text": "What framework/runtime does this project use? Inspect the project before answering."
+            },
+            {
+              "id": "99b0b61c-eea9-49fe-8501-9a4080683bf2",
+              "turnId": "turn-1791008003452",
+              "type": "activity",
+              "timestamp": 1791008003480,
+              "text": "Mediobot is working on the task.",
+              "activityLabel": "Mediobot is working on the task."
+            },
+            {
+              "id": "e26b9bbd-8657-4819-abe4-82af2ccf0bb9",
+              "turnId": "turn-1791008003452",
+              "type": "activity",
+              "timestamp": 1791008003480,
+              "text": "Maestro task started.",
+              "activityLabel": "Maestro task started."
+            },
+            {
+              "id": "0907a2e1-24af-44d2-960a-1a22e7d6794c",
+              "turnId": "turn-1791008003452",
+              "type": "activity",
+              "timestamp": 1791008032977,
+              "text": "Maestro assigned Cody.",
+              "activityLabel": "Maestro assigned Cody."
+            },
+            {
+              "id": "aaac06fa-caec-4887-a623-eb4b858b3568",
+              "turnId": "turn-1791008003452",
+              "type": "activity",
+              "timestamp": 1791008032977,
+              "text": "Cody started.",
+              "activityLabel": "Cody started."
+            },
+            {
+              "id": "290f26a1-1766-4f22-b583-e36e36d77c80",
+              "turnId": "turn-1791008003452",
+              "type": "tool_execution",
+              "timestamp": 1791008037044,
+              "text": "Cody tool started.",
+              "tool": {
+                "toolName": "filesystem.list",
+                "status": "running"
+              }
+            },
+            {
+              "id": "bebe4084-c670-4cd1-9b31-88ac5700c80b",
+              "turnId": "turn-1791008003452",
+              "type": "tool_execution",
+              "timestamp": 1791008037047,
+              "text": "Cody tool completed.",
+              "tool": {
+                "toolName": "filesystem.list",
+                "status": "success"
+              }
+            },
+            {
+              "id": "ef293c51-b3d4-467c-ad0b-1e176f1a3963",
+              "turnId": "turn-1791008003452",
+              "type": "activity",
+              "timestamp": 1791008037047,
+              "text": "Cody progress.",
+              "activityLabel": "Cody progress."
+            },
+            {
+              "id": "0f056d2b-09da-458d-a771-b63aab517ead",
+              "turnId": "turn-1791008003452",
+              "type": "tool_execution",
+              "timestamp": 1791008038644,
+              "text": "Cody tool started.",
+              "tool": {
+                "toolName": "filesystem.read",
+                "status": "running"
+              }
+            },
+            {
+              "id": "a770d07c-ef59-4144-aa09-ab949d046c0d",
+              "turnId": "turn-1791008003452",
+              "type": "tool_execution",
+              "timestamp": 1791008038647,
+              "text": "Cody tool completed.",
+              "tool": {
+                "toolName": "filesystem.read",
+                "status": "success"
+              }
+            },
+            {
+              "id": "af2eb224-302f-4a52-bd7e-0db8d190853e",
+              "turnId": "turn-1791008003452",
+              "type": "activity",
+              "timestamp": 1791008038647,
+              "text": "Cody progress.",
+              "activityLabel": "Cody progress."
+            },
+            {
+              "id": "bfb2dac6-ecc9-43de-8947-f49763962a9a",
+              "turnId": "turn-1791008003452",
+              "type": "tool_execution",
+              "timestamp": 1791008045613,
+              "text": "Cody tool started.",
+              "tool": {
+                "toolName": "filesystem.list",
+                "status": "running"
+              }
+            },
+            {
+              "id": "25df7826-199e-4e72-ba95-44cdc0f3ac53",
+              "turnId": "turn-1791008003452",
+              "type": "tool_execution",
+              "timestamp": 1791008045614,
+              "text": "Cody tool completed.",
+              "tool": {
+                "toolName": "filesystem.list",
+                "status": "success"
+              }
+            },
+            {
+              "id": "372eef26-20c9-4576-90dc-05f7cd3b825a",
+              "turnId": "turn-1791008003452",
+              "type": "activity",
+              "timestamp": 1791008045614,
+              "text": "Cody progress.",
+              "activityLabel": "Cody progress."
+            },
+            {
+              "id": "527f87c9-a37d-4056-a64f-584ac71690c1",
+              "turnId": "turn-1791008003452",
+              "type": "activity",
+              "timestamp": 1791008075620,
+              "text": "internal runtime failure",
+              "activityLabel": "internal runtime failure"
+            }
+          ],
+          "completedAt": 1791008075621
+        }
+      ]
+    },
+    {
+      "id": "thread-1791007439792",
+      "title": "Inspect Test",
+      "projectId": "project-ad03bd388584e1b6d1e0",
+      "createdAt": 1791007439792,
+      "updatedAt": 1791007457795,
+      "model": "MiniMax M2.7",
+      "branch": "",
+      "approvalMode": "Approve for me",
+      "turns": [
+        {
+          "id": "turn-b-1791007439813",
+          "threadId": "thread-1791007439792",
+          "prompt": "What framework/runtime does this project use? Inspect the project before answering.",
+          "status": "failed",
+          "currentActivity": "thinking",
+          "createdAt": 1791007439817,
+          "items": [
+            {
+              "id": "user-1791007439817",
+              "turnId": "turn-b-1791007439813",
+              "type": "user_message",
+              "timestamp": 1791007439817,
+              "text": "What framework/runtime does this project use? Inspect the project before answering."
+            },
+            {
+              "id": "1a641172-ab6d-4e45-ba36-b370fdb2fa76",
+              "turnId": "turn-b-1791007439813",
+              "type": "activity",
+              "timestamp": 1791007439814,
+              "text": "Mediobot is working on the task.",
+              "activityLabel": "Mediobot is working on the task."
+            },
+            {
+              "id": "ae3ca796-d2cf-4fc4-bf42-b8f908171c89",
+              "turnId": "turn-b-1791007439813",
+              "type": "activity",
+              "timestamp": 1791007439814,
+              "text": "Maestro task started.",
+              "activityLabel": "Maestro task started."
+            },
+            {
+              "id": "0fc94f5f-1eee-4996-9830-5aa0cf8aaf41",
+              "turnId": "turn-b-1791007439813",
+              "type": "activity",
+              "timestamp": 1791007451887,
+              "text": "Maestro assigned Cody.",
+              "activityLabel": "Maestro assigned Cody."
+            },
+            {
+              "id": "aaeda400-cac8-4440-90b8-0d0e214dce49",
+              "turnId": "turn-b-1791007439813",
+              "type": "activity",
+              "timestamp": 1791007451887,
+              "text": "Cody started.",
+              "activityLabel": "Cody started."
+            },
+            {
+              "id": "17cc1b40-9e89-4d53-9e41-319ecaf3eb86",
+              "turnId": "turn-b-1791007439813",
+              "type": "tool_execution",
+              "timestamp": 1791007454115,
+              "text": "Cody tool started.",
+              "tool": {
+                "toolName": "filesystem.list",
+                "status": "running"
+              }
+            },
+            {
+              "id": "4ed3acae-ecd4-4396-be0f-305740cda9d0",
+              "turnId": "turn-b-1791007439813",
+              "type": "tool_execution",
+              "timestamp": 1791007454118,
+              "text": "Cody tool completed.",
+              "tool": {
+                "toolName": "filesystem.list",
+                "status": "success"
+              }
+            },
+            {
+              "id": "92005626-b54d-40d0-adbc-9368c9f77104",
+              "turnId": "turn-b-1791007439813",
+              "type": "activity",
+              "timestamp": 1791007454118,
+              "text": "Cody progress.",
+              "activityLabel": "Cody progress."
+            },
+            {
+              "id": "4155b906-7ade-4d6c-a893-92ec5db686d0",
+              "turnId": "turn-b-1791007439813",
+              "type": "activity",
+              "timestamp": 1791007457793,
+              "text": "internal runtime failure",
+              "activityLabel": "internal runtime failure"
+            }
+          ],
+          "completedAt": 1791007457795
+        }
+      ]
+    },
+    {
+      "id": "thread-1791007025521",
+      "title": "General Discussion",
+      "projectId": "project-ad03bd388584e1b6d1e0",
+      "createdAt": 1791007025521,
+      "updatedAt": 1791007323014,
+      "model": "MiniMax M2.7",
+      "branch": "",
+      "approvalMode": "Approve for me",
+      "turns": [
+        {
+          "id": "turn-1791007025523",
+          "threadId": "thread-1791007025521",
+          "prompt": "Hi",
+          "status": "completed",
+          "currentActivity": "thinking",
+          "createdAt": 1791007025583,
+          "items": [
+            {
+              "id": "user-1791007025583",
+              "turnId": "turn-1791007025523",
+              "type": "user_message",
+              "timestamp": 1791007025583,
+              "text": "Hi"
+            },
+            {
+              "id": "1016bfc5-2384-4039-a51d-14e83eee10a6",
+              "turnId": "turn-1791007025523",
+              "type": "activity",
+              "timestamp": 1791007025574,
+              "text": "Mediobot is working on the task.",
+              "activityLabel": "Mediobot is working on the task."
+            },
+            {
+              "id": "054d060d-fcde-4b0d-86bf-cb717875b2eb",
+              "turnId": "turn-1791007025523",
+              "type": "activity",
+              "timestamp": 1791007025575,
+              "text": "Maestro task started.",
+              "activityLabel": "Maestro task started."
+            },
+            {
+              "id": "cb72f399-8138-4811-a34e-9bf28ec9da02",
+              "turnId": "turn-1791007025523",
+              "type": "agent_message",
+              "timestamp": 1791007035052,
+              "text": "Hello! I'm Maestro, the orchestrator for your disposable-project-v2. I coordinate the available Mediobots (Cody, Vision, Doc, Research, and Tester) to help you build, test, and research your projects. How can I help you today?"
+            },
+            {
+              "id": "564d430a-e3ce-44ac-8387-636bd97a9017",
+              "turnId": "turn-1791007025523",
+              "type": "activity",
+              "timestamp": 1791007035052,
+              "text": "Maestro completed.",
+              "activityLabel": "Maestro completed."
+            }
+          ],
+          "completedAt": 1791007035052
+        },
+        {
+          "id": "turn-b-1791007316767",
+          "threadId": "thread-1791007025521",
+          "prompt": "What framework/runtime does this project use? Inspect the project before answering.",
+          "status": "failed",
+          "currentActivity": "thinking",
+          "createdAt": 1791007316786,
+          "items": [
+            {
+              "id": "user-1791007316786",
+              "turnId": "turn-b-1791007316767",
+              "type": "user_message",
+              "timestamp": 1791007316786,
+              "text": "What framework/runtime does this project use? Inspect the project before answering."
+            },
+            {
+              "id": "70e0c87e-25c5-42ce-9ed0-d6d75b939d23",
+              "turnId": "turn-b-1791007316767",
+              "type": "activity",
+              "timestamp": 1791007316785,
+              "text": "Mediobot is working on the task.",
+              "activityLabel": "Mediobot is working on the task."
+            },
+            {
+              "id": "9102cd6a-14ae-42ad-bd4d-e42d3a417c5c",
+              "turnId": "turn-b-1791007316767",
+              "type": "activity",
+              "timestamp": 1791007316785,
+              "text": "Maestro task started.",
+              "activityLabel": "Maestro task started."
+            },
+            {
+              "id": "641faa95-e9f0-4442-8738-96a8984e08da",
+              "turnId": "turn-b-1791007316767",
+              "type": "activity",
+              "timestamp": 1791007318872,
+              "text": "Maestro assigned Cody.",
+              "activityLabel": "Maestro assigned Cody."
+            },
+            {
+              "id": "7f6d8b72-f9c1-44ed-b5ed-ca78d805fc9a",
+              "turnId": "turn-b-1791007316767",
+              "type": "activity",
+              "timestamp": 1791007318872,
+              "text": "Cody started.",
+              "activityLabel": "Cody started."
+            },
+            {
+              "id": "7e3ce389-c2b6-4263-ab6c-bd19a52f4b7a",
+              "turnId": "turn-b-1791007316767",
+              "type": "tool_execution",
+              "timestamp": 1791007323006,
+              "text": "Cody tool started.",
+              "tool": {
+                "toolName": "filesystem.list",
+                "status": "running"
+              }
+            },
+            {
+              "id": "a0213062-c2e6-45bb-8825-6ac171a42c69",
+              "turnId": "turn-b-1791007316767",
+              "type": "tool_execution",
+              "timestamp": 1791007323010,
+              "text": "Cody tool failed.",
+              "tool": {
+                "toolName": "filesystem.list",
+                "status": "failed"
+              }
+            },
+            {
+              "id": "b7033875-6335-4787-8dd1-b98b4d828410",
+              "turnId": "turn-b-1791007316767",
+              "type": "activity",
+              "timestamp": 1791007323011,
+              "text": "internal runtime failure",
+              "activityLabel": "internal runtime failure"
+            }
+          ],
+          "completedAt": 1791007323014
+        }
+      ]
+    }
+  ]
+}
