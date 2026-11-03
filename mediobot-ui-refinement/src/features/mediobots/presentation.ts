@@ -122,8 +122,22 @@ const PRESENTATION_BY_ID: Readonly<Record<string, MediobotPresentation>> = {
   },
 };
 
+export const normalizeMediobotId = (idOrName?: string): string => {
+  if (!idOrName) return '';
+  let clean = idOrName.toLowerCase().trim();
+  clean = clean.replace(/^(msg-|turn-|definition-|actor-)/, '');
+  if (clean.includes('vision')) return 'vision';
+  if (clean.includes('cody')) return 'cody';
+  if (clean.includes('doc')) return 'doc';
+  if (clean.includes('research')) return 'research';
+  if (clean.includes('tester')) return 'tester';
+  if (clean.includes('deployer')) return 'deployer';
+  if (clean.includes('maestro')) return 'maestro';
+  return clean;
+};
+
 export const getMediobotAvatarColors = (id?: string, isLight: boolean = false): { bg: string; eye: string } => {
-  const safeId = (id || 'maestro').toLowerCase();
+  const safeId = normalizeMediobotId(id) || 'maestro';
   switch (safeId) {
     case 'maestro':
       return { bg: isLight ? '#18181b' : '#f4f4f5', eye: isLight ? '#ffffff' : '#000000' };
@@ -156,6 +170,31 @@ export const getMediobotAvatarColors = (id?: string, isLight: boolean = false): 
     }
   }
 };
+
+export const getMediobotCursorColor = (id?: string, isLight: boolean = false): string => {
+  const safeId = normalizeMediobotId(id) || 'maestro';
+  switch (safeId) {
+    case 'maestro':
+      return isLight ? '#18181b' : '#f4f4f5';
+    case 'cody':
+      return '#fde047';
+    case 'vision':
+      return '#38bdf8';
+    case 'doc':
+      return '#cbd5e1';
+    case 'research':
+      return '#fb923c';
+    case 'tester':
+      return '#c084fc';
+    case 'deployer':
+      return '#34d399';
+    default: {
+      const colors = getMediobotAvatarColors(safeId, isLight);
+      return colors.bg;
+    }
+  }
+};
+
 
 const DYNAMIC_PALETTES = [
   {
@@ -221,19 +260,26 @@ const DYNAMIC_PALETTES = [
 ];
 
 export const getMediobotPresentation = (id?: string, name?: string, specialization?: string): MediobotPresentation => {
-  const safeId = (id || name || 'maestro').toLowerCase();
-  const known = PRESENTATION_BY_ID[safeId];
+  const normId = normalizeMediobotId(id || name) || 'maestro';
+  const known = PRESENTATION_BY_ID[normId];
   if (known) return known;
+
+  const safeId = (id || name || 'maestro').toLowerCase();
+  const directKnown = PRESENTATION_BY_ID[safeId];
+  if (directKnown) return directKnown;
+
   let hash = 0;
   for (let i = 0; i < safeId.length; i++) {
     hash = (hash << 5) - hash + safeId.charCodeAt(i);
     hash |= 0;
   }
   const palette = DYNAMIC_PALETTES[Math.abs(hash) % DYNAMIC_PALETTES.length]!;
+  const rawDisplayName = (name ?? (id ? id.replace(/^definition-/i, '') : 'Specialist')).replace(/^definition-/i, '');
+  const capitalized = rawDisplayName.charAt(0).toUpperCase() + rawDisplayName.slice(1);
   return {
     ...palette,
-    id: id || 'custom',
-    displayName: name ?? id ?? 'Specialist',
+    id: normId || id || 'custom',
+    displayName: capitalized,
     specialization: specialization ?? 'Specialist Mediobot',
   };
 };

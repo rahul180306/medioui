@@ -5,6 +5,7 @@ import OpenAI from 'openai';
 import path from 'node:path';
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { exec } from 'node:child_process';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -269,6 +270,26 @@ app.get('/api/dummy-project/files', (_req, res) => {
   });
 });
 
+// Interactive Terminal CLI execution API
+app.post('/api/terminal/execute', (req, res) => {
+  const { command, cwd } = req.body || {};
+  if (!command || typeof command !== 'string') {
+    return res.status(400).json({ error: 'Command string is required.' });
+  }
+
+  const runCwd = cwd && typeof cwd === 'string' && fs.existsSync(cwd) ? cwd : process.cwd();
+
+  // Run with 15s timeout limit and safe environment
+  exec(command, { cwd: runCwd, timeout: 15000, maxBuffer: 1024 * 1024 }, (err, stdout, stderr) => {
+    res.json({
+      stdout: stdout || '',
+      stderr: stderr || (err ? err.message : ''),
+      exitCode: err ? (typeof err.code === 'number' ? err.code : 1) : 0,
+      cwd: runCwd,
+    });
+  });
+});
+
 // System Resource Governor endpoint (fast status response)
 app.get('/api/system/resources', (_req, res) => {
   res.json({
@@ -387,18 +408,29 @@ app.post('/api/gemini/execute', async (req, res) => {
       .map(([filepath, content]) => `--- File: ${filepath} ---\n${content}`)
       .join('\n\n');
 
+    const cleanSpecialist = (specialistId || '').replace(/^(definition-|msg-|turn-)/, '').toLowerCase();
     const specialistRole =
-      specialistId === 'vision'
+      cleanSpecialist.includes('vision') || prompt.toLowerCase().includes('vision')
         ? 'Vision (Browser and visual specialist)'
-        : specialistId === 'research'
+        : cleanSpecialist.includes('research')
         ? 'Research (Web research and information retrieval)'
-        : specialistId === 'tester'
+        : cleanSpecialist.includes('tester')
         ? 'Tester (Independent verification and test suites)'
-        : specialistId === 'doc'
+        : cleanSpecialist.includes('doc')
         ? 'Doc (Documentation intelligence)'
-        : specialistId === 'cody'
+        : cleanSpecialist.includes('cody')
         ? 'Cody (Senior software engineer)'
+        : cleanSpecialist.includes('deployer')
+        ? 'Deployer (Deployment & DevOps specialist)'
         : 'Maestro (Team orchestration lead)';
+
+    const cleanName =
+      cleanSpecialist.includes('vision') || prompt.toLowerCase().includes('vision') ? 'Vision' :
+      cleanSpecialist.includes('cody') ? 'Cody' :
+      cleanSpecialist.includes('doc') ? 'Doc' :
+      cleanSpecialist.includes('research') ? 'Research' :
+      cleanSpecialist.includes('tester') ? 'Tester' :
+      cleanSpecialist.includes('deployer') ? 'Deployer' : 'Maestro';
 
     const isCodeTask = /\b(code|fix|test|edit|calculator|bug|build|file|create|divide|add|subtract|multiply|script|run|refactor|function|class)\b/i.test(prompt);
 
@@ -415,7 +447,7 @@ Instructions:
 3. Keep the tone focused, concise, technical, and confident.
 4. Format your final response with clear markdown headers, code blocks, and bullet points.`
       : `You are ${specialistRole} in the Mediobot multi-agent software development framework.
-Respond naturally, helpfully, and concisely to the user's greeting or question. Introduce yourself and ask how you can assist with their software project today. Keep response under 3 paragraphs.`;
+Respond naturally, helpfully, and concisely to the user's greeting or question. Introduce yourself as ${cleanName} and explain your specialized role. Ask how you can assist with their software project today. Never introduce yourself as Maestro if you are ${cleanName}. Keep response under 3 paragraphs.`;
 
     // Route deepseek-v4.1-flash through Experiential Gateway
     const isDeepSeek =

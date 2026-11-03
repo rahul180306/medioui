@@ -439,20 +439,23 @@ export class MockMediobotRuntime implements IMediobotRuntime {
     this.persistThreads();
 
     const targetSpecialistId = options.specialistId || thread.specialistId;
-    const isSpecialist = Boolean(targetSpecialistId && targetSpecialistId !== 'maestro');
+    const cleanSpecialistId = targetSpecialistId
+      ? targetSpecialistId.replace(/^(definition-|msg-|turn-)/, '').toLowerCase()
+      : '';
+    const isSpecialist = Boolean(cleanSpecialistId && cleanSpecialistId !== 'maestro');
     const specialistName = isSpecialist
-      ? targetSpecialistId!.charAt(0).toUpperCase() + targetSpecialistId!.slice(1)
+      ? cleanSpecialistId.charAt(0).toUpperCase() + cleanSpecialistId.slice(1)
       : 'Cody';
     const specialistRole =
-      targetSpecialistId === 'vision'
+      cleanSpecialistId === 'vision'
         ? 'Browser and visual work'
-        : targetSpecialistId === 'research'
+        : cleanSpecialistId === 'research'
         ? 'Web research'
-        : targetSpecialistId === 'doc'
+        : cleanSpecialistId === 'doc'
         ? 'Documentation intelligence'
-        : targetSpecialistId === 'tester'
+        : cleanSpecialistId === 'tester'
         ? 'Independent verification'
-        : targetSpecialistId === 'deployer'
+        : cleanSpecialistId === 'deployer'
         ? 'Deployment'
         : 'Software engineering';
 
@@ -499,7 +502,7 @@ export class MockMediobotRuntime implements IMediobotRuntime {
                 ? 'deepseek-v4.1-flash'
                 : (options.modelSelection?.modelId || 'gemini-3.6-flash'),
             modelName: activeModelName,
-            specialistId: targetSpecialistId || 'maestro',
+            specialistId: cleanSpecialistId || 'maestro',
           }),
         });
         if (timer) clearTimeout(timer);
@@ -518,10 +521,10 @@ export class MockMediobotRuntime implements IMediobotRuntime {
       await new Promise((resolve) => setTimeout(resolve, 100));
       const item: ThreadItem = isSpecialist
         ? {
-            id: `msg-${targetSpecialistId}-${Date.now()}`,
+            id: `msg-${cleanSpecialistId}-${Date.now()}`,
             turnId,
             type: 'agent_message',
-            actor: { type: 'mediobot', name: specialistName, role: specialistRole },
+            actor: { type: 'mediobot', mediobotId: cleanSpecialistId, presentationId: cleanSpecialistId, name: specialistName, role: specialistRole },
             timestamp: Date.now(),
             text: isCodeTask
               ? `Analyzing request: "${prompt}" using **${activeModelName}** on **dummy-project**.`
@@ -664,13 +667,13 @@ export class MockMediobotRuntime implements IMediobotRuntime {
 
       // Final Step: Assistant response message with Gemini AI content
       const responseText = apiResult?.content ||
-        `Hello! I am ${specialistName}, running on **${activeModelName}** with Google Gemini AI. How can I assist you with your project today?`;
+        `Hello! I am ${specialistName}, the ${specialistRole} specialist in the Mediobot multi-agent framework. How can I assist you with your project today?`;
 
       const responseItem: ThreadItem = {
-        id: `msg-resp-${Date.now()}`,
+        id: `msg-resp-${cleanSpecialistId || 'specialist'}-${Date.now()}`,
         turnId,
         type: 'agent_message',
-        actor: { type: 'mediobot', name: specialistName, role: specialistRole },
+        actor: { type: 'mediobot', mediobotId: cleanSpecialistId, presentationId: cleanSpecialistId, name: specialistName, role: specialistRole },
         timestamp: Date.now(),
         text: responseText,
       };

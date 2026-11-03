@@ -401,10 +401,18 @@ export async function startCommandCenter(options: {
 
   const actorForDefinition = (definitionId?: string): ConversationActor | undefined => {
     if (!definitionId) return undefined;
-    const definition = composition.definitions.find((candidate) => candidate.id === definitionId);
-    if (!definition) return undefined;
-    const presentationId = definition.name.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
-    return { type: "mediobot", mediobotId: definition.id, presentationId, name: definition.name };
+    const cleanId = definitionId.toLowerCase().trim().replace(/^(?:definition-|worker-|bot-)/, '');
+    const definition = composition.definitions.find((candidate) =>
+      candidate.id === definitionId ||
+      candidate.id.toLowerCase().replace(/^definition-/, '') === cleanId ||
+      candidate.name.toLowerCase() === cleanId
+    );
+    if (definition) {
+      const presentationId = cleanId;
+      return { type: "mediobot", mediobotId: cleanId, presentationId, name: definition.name };
+    }
+    const capName = cleanId.charAt(0).toUpperCase() + cleanId.slice(1);
+    return { type: "mediobot", mediobotId: cleanId, presentationId: cleanId, name: capName };
   };
   const maestroActor: ConversationActor = actorForDefinition(composition.maestroDefinitionId) ?? { type: "mediobot", mediobotId: "maestro", name: "Maestro" };
   const actorForProductEvent = (type: ProductEvent["type"], definitionId?: string): ConversationActor => {
@@ -1515,9 +1523,17 @@ export async function startCommandCenter(options: {
         const specialistFieldPresent = Object.hasOwn(requestValue, "specialistId");
         const requestedSpecialistId = specialistFieldPresent && typeof requestValue.specialistId === "string"
           ? requestValue.specialistId.trim() : undefined;
+        const isMaestroSpecialist = Boolean(requestedSpecialistId && (
+          requestedSpecialistId.toLowerCase() === "maestro" ||
+          requestedSpecialistId === composition.maestroDefinitionId ||
+          requestedSpecialistId.replace(/^definition-/, '').toLowerCase() === "maestro"
+        ));
         const requestedSpecialist = requestedSpecialistId
-          ? composition.definitions.find(entry => entry.id === requestedSpecialistId
-            && entry.group === "specialist" && entry.directConversationAvailable === true)
+          ? composition.definitions.find(entry => (
+              entry.id === requestedSpecialistId ||
+              entry.id.replace(/^definition-/, '') === requestedSpecialistId.replace(/^definition-/, '') ||
+              entry.name.toLowerCase() === requestedSpecialistId.toLowerCase()
+            ) && (entry.group === "specialist" || isMaestroSpecialist) && (entry.directConversationAvailable === true || entry.availability !== "unavailable" || isMaestroSpecialist))
           : undefined;
         if (specialistFieldPresent && (!requestedSpecialistId || !requestedSpecialist)) {
           json(response, 400, { error: { code: "invalid-specialist", message: "Choose an available individual specialist conversation." } }); return;
@@ -2136,7 +2152,13 @@ export async function startCommandCenter(options: {
               });
 
               let accumulatedMessage = "";
-              decision = requestedSpecialist
+              const isDirectMaestro = Boolean(
+                requestedSpecialist && (
+                  requestedSpecialist.id === composition.maestroDefinitionId ||
+                  requestedSpecialist.name.toLowerCase() === "maestro"
+                )
+              );
+              decision = (requestedSpecialist && !isDirectMaestro)
                 ? { type: "delegate_text", independence: "The user explicitly selected one specialist for this turn.", assignments: [{
                       definitionId: requestedSpecialist.id, objective: resolvedContext.promptWithContext,
                       relevantContext: "Prior private conversation context will be added by the authorized specialist-session runtime.",

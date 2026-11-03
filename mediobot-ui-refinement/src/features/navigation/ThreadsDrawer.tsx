@@ -416,10 +416,12 @@ export const ThreadsDrawer: React.FC = () => {
   };
 
   // Deduplicate threads by unique id to prevent duplicate keys in history list
+  // In the general history drawer, only Main Chat threads appear. Dedicated agent chats stay in their agent workspace.
   const uniqueThreads = useMemo(() => {
     const seen = new Set<string>();
     return (threads || []).filter((t) => {
       if (!t.id || seen.has(t.id)) return false;
+      if (t.specialistId) return false;
       seen.add(t.id);
       return true;
     });

@@ -392,9 +392,9 @@ export function createComposition(options: {
     onDiagnostic: ({ worldId, taskId, workerId, diagnostic }) => process.stderr.write(`${JSON.stringify({ event: "vision.diagnostic", worldId, taskId, workerId, diagnostic })}\n`),
   }));
   const baseDefinitions: DefinitionView[] = [
-    { id: execution.maestroDefinitionId, name: "Maestro", group: "orchestrator", role: "Team orchestration", summary: "Delegate work to specialized Mediobots", availability: configured ? "available" : "not-configured", executable: configured, directConversationAvailable: false },
+    { id: execution.maestroDefinitionId, name: "Maestro", group: "orchestrator", role: "Team orchestration", summary: "Delegate work to specialized Mediobots", availability: configured ? "available" : "not-configured", executable: configured, directConversationAvailable: true },
     { id: execution.codyDefinitionId, name: "Cody", group: "specialist", role: "Software engineering", summary: "Inspect, edit, build, and verify project code when assigned by Maestro", availability: "development", executable: false, directConversationAvailable: true },
-    { id: vision.id, name: "Vision", group: "specialist", role: "Browser and visual work", summary: "Structured browser observation and action", availability: configured ? "available" : "not-configured", executable: configured, directConversationAvailable: false },
+    { id: vision.id, name: "Vision", group: "specialist", role: "Browser and visual work", summary: "Structured browser observation and action", availability: configured ? "available" : "not-configured", executable: configured, directConversationAvailable: true },
     ...(execution.scraapyDefinitionId ? [{
       id: execution.scraapyDefinitionId,
       name: "Scraapy",

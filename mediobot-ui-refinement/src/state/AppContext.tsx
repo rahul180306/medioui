@@ -24,6 +24,7 @@ import { MOCK_PROVIDERS, MOCK_CATALOG } from '../runtime/mockData';
 import { buildAssignmentModelSelections, resolveTurnModelSelection } from './agentModelRouting';
 import { specialistActivityState, specialistAssignmentGoal, specialistTaskIdentity } from '../features/empty/specialistTaskActivity';
 import { mergeAgentTaskHistory } from './specialistTaskHistory';
+import { normalizeMediobotId } from '../features/mediobots/presentation';
 
 function mergeIncomingItem(existing: ThreadItem, incoming: ThreadItem): ThreadItem {
   return {
@@ -165,7 +166,8 @@ export type AppLocation =
   | { type: 'home' }
   | { type: 'thread'; threadId: string }
   | { type: 'settings'; tab: string }
-  | { type: 'library' };
+  | { type: 'library' }
+  | { type: 'terminal' };
 
 interface AppContextType {
   threads: Thread[];
@@ -207,6 +209,7 @@ interface AppContextType {
   activeModal: 'settings' | 'projects' | 'export_zip' | 'shortcuts' | null;
   isSettingsView: boolean;
   isLibraryView: boolean;
+  isTerminalView: boolean;
   settingsTab: string;
   canGoBack: boolean;
   canGoForward: boolean;
@@ -230,6 +233,7 @@ interface AppContextType {
   agentGroupHistory: RuntimeSpecialistGroupHistory[];
   agentGroupHistoryUnavailable: boolean;
   selectedMediobotId: string | null;
+  selectedAgent: MedioBotAgent | null;
   agentPreferences: Record<string, AgentModelPreference>;
   setAgentModelPreference: (agentId: string, modelKey: string) => void;
   setAgentEffortPreference: (agentId: string, effort: string) => void;
@@ -246,6 +250,8 @@ interface AppContextType {
   closeSettings: () => void;
   openLibrary: () => void;
   closeLibrary: () => void;
+  openTerminal: () => void;
+  closeTerminal: () => void;
   setSettingsTab: (tab: string) => void;
   setIsSettingsView: (open: boolean) => void;
   toggleSidebar: () => void;
@@ -284,6 +290,26 @@ interface AppContextType {
 export const normalizeFilePath = (p: string): string => {
   if (!p) return '';
   return p.replace(/\\/g, '/').replace(/^\.\//, '').replace(/^\/+/, '').trim();
+};
+
+export const isSpecialistChatTab = (tab: WorkbenchTab, threadsList?: Thread[]): boolean => {
+  if (!tab || tab.kind !== 'chat') return false;
+  if (threadsList && tab.threadId) {
+    const matched = threadsList.find((th) => th.id === tab.threadId);
+    if (matched?.specialistId) return true;
+  }
+  const title = (tab.title || '').trim().toLowerCase();
+  return (
+    title.startsWith('maestro') ||
+    title.startsWith('cody') ||
+    title.startsWith('vision') ||
+    title.startsWith('doc') ||
+    title.startsWith('researcher') ||
+    title.startsWith('research') ||
+    title.startsWith('tester') ||
+    title.startsWith('deployer') ||
+    title.startsWith('definition-')
+  );
 };
 
 const AppContext = createContext<AppContextType | null>(null);
@@ -449,9 +475,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const currentLoc: AppLocation = navHistory[navIndex] || { type: 'home' };
   const isSettingsView = currentLoc.type === 'settings';
   const isLibraryView = currentLoc.type === 'library';
+  const isTerminalView = currentLoc.type === 'terminal';
   const settingsTab = currentLoc.type === 'settings' ? currentLoc.tab : 'general';
 
-  // Canonical Workbench Tabs state
+  // Canonical Workbench Tabs state (only files and main chat; never specialist/Mediobot side chats)
   const [workbenchTabs, setWorkbenchTabs] = useState<WorkbenchTab[]>(() => {
     try {
       const saved = localStorage.getItem('mediobot_workbench_tabs');
@@ -461,6 +488,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           const seen = new Set<string>();
           return parsed.filter((t) => {
             if (!t || !t.id) return false;
+            if (isSpecialistChatTab(t)) return false;
             const key =
               t.kind === 'file'
                 ? `file:${normalizeFilePath(t.path || t.id.replace(/^file:/, ''))}`
@@ -484,13 +512,25 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   });
 
+  // Sanitize workbenchTabs: ensure no specialist side-chat thread tabs linger in workbenchTabs
+  useEffect(() => {
+    setWorkbenchTabs((prev) => {
+      const sanitized = prev.filter((tab) => !isSpecialistChatTab(tab, threads));
+      if (sanitized.length !== prev.length) {
+        return sanitized;
+      }
+      return prev;
+    });
+  }, [threads]);
+
   useEffect(() => {
     try {
-      localStorage.setItem('mediobot_workbench_tabs', JSON.stringify(workbenchTabs));
+      const cleanTabs = workbenchTabs.filter((tab) => !isSpecialistChatTab(tab, threads));
+      localStorage.setItem('mediobot_workbench_tabs', JSON.stringify(cleanTabs));
     } catch {
       // ignore
     }
-  }, [workbenchTabs]);
+  }, [workbenchTabs, threads]);
 
   useEffect(() => {
     try {
@@ -638,9 +678,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       pushLocation({ type: 'thread', threadId: activeWorkbenchTab.threadId });
       return;
     }
-    // Search backward for the most recent non-settings, non-library location
+    // Search backward for the most recent non-settings, non-library, non-terminal location
     for (let i = navIndex - 1; i >= 0; i--) {
-      if (navHistory[i] && navHistory[i].type !== 'settings' && navHistory[i].type !== 'library') {
+      if (
+        navHistory[i] &&
+        navHistory[i].type !== 'settings' &&
+        navHistory[i].type !== 'library' &&
+        navHistory[i].type !== 'terminal'
+      ) {
         setNavIndex(i);
         return;
       }
@@ -656,7 +701,32 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const closeLibrary = useCallback(() => {
     for (let i = navIndex - 1; i >= 0; i--) {
-      if (navHistory[i] && navHistory[i].type !== 'settings' && navHistory[i].type !== 'library') {
+      if (
+        navHistory[i] &&
+        navHistory[i].type !== 'settings' &&
+        navHistory[i].type !== 'library' &&
+        navHistory[i].type !== 'terminal'
+      ) {
+        setNavIndex(i);
+        return;
+      }
+    }
+    pushLocation({ type: 'home' });
+  }, [navIndex, navHistory, pushLocation]);
+
+  const openTerminal = useCallback(() => {
+    setSelectedMediobotId(null);
+    pushLocation({ type: 'terminal' });
+  }, [pushLocation]);
+
+  const closeTerminal = useCallback(() => {
+    for (let i = navIndex - 1; i >= 0; i--) {
+      if (
+        navHistory[i] &&
+        navHistory[i].type !== 'settings' &&
+        navHistory[i].type !== 'library' &&
+        navHistory[i].type !== 'terminal'
+      ) {
         setNavIndex(i);
         return;
       }
@@ -805,6 +875,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }, [workbenchTabs, isSettingsView, closeSettings]);
 
   const openChatTab = useCallback((threadId: string) => {
+    const thread = threads.find((t) => t.id === threadId);
+    if (thread?.specialistId) {
+      // Dedicated Mediobot side chat: DO NOT create a top workbench tab!
+      setSelectedMediobotId(thread.specialistId);
+      setActiveWorkbenchTabIdState(null);
+      setWorkbenchTabs((prev) => prev.filter((t) => !(t.kind === 'chat' && t.threadId === threadId)));
+      pushLocation({ type: 'thread', threadId });
+      if (isSettingsView) {
+        closeSettings();
+      }
+      return;
+    }
+
     setSelectedMediobotId(null);
     const tabId = `chat:${threadId}`;
 
@@ -825,12 +908,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return;
     }
 
-    // 2. Only open the tab if it is not already opened
+    // 2. Only open the tab if it is not already opened and is not a specialist chat
     setWorkbenchTabs((prev) => {
       if (prev.some((t) => t.kind === 'chat' && (t.id === tabId || t.threadId === threadId))) {
         return prev;
       }
-      const thread = threads.find((t) => t.id === threadId);
       return [...prev, { id: tabId, kind: 'chat', threadId, title: thread?.title || 'New chat' }];
     });
 
@@ -1018,7 +1100,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               }
               return null;
             })
-            .filter((t): t is WorkbenchTab => t !== null);
+            .filter((t): t is WorkbenchTab => t !== null)
+            .filter((t) => !isSpecialistChatTab(t, loadedThreads));
         } else if (ws.uiState?.openTabs && Array.isArray(ws.uiState.openTabs)) {
           restoredTabs = ws.uiState.openTabs.map((t) => ({
             id: `file:${t.path}`,
@@ -1040,7 +1123,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           try {
             const parsedSaved = JSON.parse(savedTabsJson);
             if (Array.isArray(parsedSaved) && parsedSaved.length > 0) {
-              finalTabs = parsedSaved.filter((t) => t && t.id);
+              finalTabs = parsedSaved.filter((t) => t && t.id && !isSpecialistChatTab(t, loadedThreads));
             }
           } catch {
             // ignore
@@ -1056,6 +1139,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             }
           });
         }
+        finalTabs = finalTabs.filter((t) => !isSpecialistChatTab(t, loadedThreads));
         setWorkbenchTabs(finalTabs);
 
         const savedActiveTabId = (() => {
@@ -1269,12 +1353,51 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const agentTaskProjectionWorkspace = useRef<string | null>(null);
 
   const selectAgent = useCallback((agentId: string | null) => {
-    setSelectedMediobotId(agentId);
-    if (agentId) {
+    const cleanAgentId = agentId ? normalizeMediobotId(agentId) : null;
+    setSelectedMediobotId(cleanAgentId);
+    try {
+      if (cleanAgentId) {
+        localStorage.setItem('mediobot_selected_mediobot_id', cleanAgentId);
+      } else {
+        localStorage.removeItem('mediobot_selected_mediobot_id');
+      }
+    } catch {
+      // ignore
+    }
+
+    if (!cleanAgentId) {
+      const mainThread = threads.find((t) => !t.specialistId);
+      if (mainThread) {
+        const tabId = `chat:${mainThread.id}`;
+        setActiveWorkbenchTabIdState(tabId);
+        setWorkbenchTabs((prev) =>
+          prev.some((t) => t.id === tabId)
+            ? prev
+            : [...prev, { id: tabId, kind: 'chat' as const, threadId: mainThread.id, title: mainThread.title }]
+        );
+        pushLocation({ type: 'thread', threadId: mainThread.id });
+      } else {
+        setActiveWorkbenchTabIdState(null);
+        pushLocation({ type: 'home' });
+      }
+      return;
+    }
+
+    // Dedicated Agent direct chat & mind workspace (Maestro or specialists): Resume ongoing conversation if exists
+    const existingSpecialistThread = threads.find(
+      (t) => t.specialistId && normalizeMediobotId(t.specialistId) === cleanAgentId
+    );
+
+    if (existingSpecialistThread) {
+      // Dedicated Agent side chat & mind workspace (Maestro or specialists): DO NOT create or add a top workbench tab!
+      setWorkbenchTabs((prev) => prev.filter((t) => !(t.kind === 'chat' && t.threadId === existingSpecialistThread.id)));
+      setActiveWorkbenchTabIdState(null);
+      pushLocation({ type: 'thread', threadId: existingSpecialistThread.id });
+    } else {
       setActiveWorkbenchTabIdState(null);
       pushLocation({ type: 'home' });
     }
-  }, [pushLocation]);
+  }, [threads, pushLocation]);
 
   useEffect(() => {
     if (!agentRegistryLoaded || !selectedMediobotId || agents.some(agent => agent.id === selectedMediobotId)) return;
@@ -1282,6 +1405,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (legacyMatches.length === 1) setSelectedMediobotId(legacyMatches[0]!.id);
     else if (agents.length) setSelectedMediobotId(null);
   }, [agentRegistryLoaded, agents, selectedMediobotId]);
+
+  const selectedAgent = useMemo(() => {
+    if (!selectedMediobotId) return null;
+    const cleanId = normalizeMediobotId(selectedMediobotId);
+    return (
+      agents.find(
+        (agent) =>
+          normalizeMediobotId(agent.id) === cleanId ||
+          (agent.preferenceId && normalizeMediobotId(agent.preferenceId) === cleanId) ||
+          agent.definitionId === selectedMediobotId
+      ) ?? null
+    );
+  }, [selectedMediobotId, agents]);
 
   const updateAgentStatus = useCallback((agentId: string, status: AgentStatus, currentTask?: string) => {
     setAgents((prev) =>
@@ -2233,11 +2369,32 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     async (text: string, attachments: import('../types').TurnAttachment[] = [], selectedModelSelection?: ThreadModelSelection, reasoningEffort?: string) => {
       const trimmed = text.trim();
       let threadId = activeThreadId;
-      const selectedAgent = selectedMediobotId ? agents.find((agent) => agent.id === selectedMediobotId) : undefined;
-      const specialistId = selectedMediobotId && selectedMediobotId !== 'maestro'
-        ? (selectedAgent?.definitionId ?? selectedMediobotId)
-        : (selectedAgent?.directConversationAvailable ? (selectedAgent.definitionId ?? selectedAgent.id) : undefined);
-      const specialistPreferenceId = specialistId ? (selectedAgent?.preferenceId ?? selectedAgent?.id) : undefined;
+      const cleanSelectedMediobotId = selectedMediobotId ? normalizeMediobotId(selectedMediobotId) : null;
+      const activeSpecialistAgent = cleanSelectedMediobotId
+        ? (agents.find(
+            (agent) =>
+              normalizeMediobotId(agent.id) === cleanSelectedMediobotId ||
+              (agent.preferenceId && normalizeMediobotId(agent.preferenceId) === cleanSelectedMediobotId) ||
+              agent.definitionId === selectedMediobotId
+          ) ?? selectedAgent)
+        : null;
+      const rawSpecialist = selectedMediobotId
+        ? (activeSpecialistAgent?.id ?? cleanSelectedMediobotId ?? selectedMediobotId)
+        : (activeSpecialistAgent?.directConversationAvailable ? (activeSpecialistAgent.id ?? activeSpecialistAgent.definitionId) : undefined);
+      const specialistId = rawSpecialist ? normalizeMediobotId(rawSpecialist) : undefined;
+      const specialistPreferenceId = specialistId ? (activeSpecialistAgent?.preferenceId ?? specialistId) : undefined;
+
+      // Ensure specialist chats stay isolated to their dedicated thread
+      if (specialistId) {
+        const currentThread = threadId ? threads.find((t) => t.id === threadId) : null;
+        if (!currentThread || !currentThread.specialistId || normalizeMediobotId(currentThread.specialistId) !== specialistId) {
+          const existingSpecialistThread = threads.find(
+            (t) => t.specialistId && normalizeMediobotId(t.specialistId) === specialistId
+          );
+          threadId = existingSpecialistThread ? existingSpecialistThread.id : null;
+        }
+      }
+
       const requestedModelSelection = resolveTurnModelSelection(selectedModelSelection, modelSelection, specialistPreferenceId, agentPreferences);
       const rawEffort = (
         reasoningEffort
@@ -2285,7 +2442,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
       // If in empty state, spawn a new thread with automated concise title based on prompt
       if (!threadId) {
-        const newTitle = ThreadTitleService.generateTitle(trimmed);
+        const cleanSpecName = specialistId
+          ? (activeSpecialistAgent?.name || (specialistId.charAt(0).toUpperCase() + specialistId.slice(1)))
+          : '';
+        const newTitle = specialistId
+          ? `${cleanSpecName}: ${ThreadTitleService.generateTitle(trimmed)}`
+          : ThreadTitleService.generateTitle(trimmed);
         const uniqueSuffix = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID().slice(0, 8) : Math.random().toString(36).slice(2, 8);
         threadId = `thread-${Date.now()}-${uniqueSuffix}`;
         newTurn.threadId = threadId;
@@ -2312,17 +2474,24 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           return [newThread, ...prev];
         });
         void runtimeInstance.saveThread(newThread).catch(() => {});
-        const newTab: WorkbenchTab = {
-          id: `chat:${threadId}`,
-          kind: 'chat',
-          threadId,
-          title: newTitle,
-        };
-        setWorkbenchTabs((prev) => {
-          if (prev.some((t) => t.id === newTab.id)) return prev;
-          return [...prev, newTab];
-        });
-        setActiveWorkbenchTabIdState(newTab.id);
+        // Only Main Chat (threads without specialistId) should create a workbench tab at the top!
+        if (!specialistId) {
+          const newTab: WorkbenchTab = {
+            id: `chat:${threadId}`,
+            kind: 'chat',
+            threadId,
+            title: newTitle,
+          };
+          setWorkbenchTabs((prev) => {
+            if (prev.some((t) => t.id === newTab.id)) return prev;
+            return [...prev, newTab];
+          });
+          setActiveWorkbenchTabIdState(newTab.id);
+        } else {
+          // Dedicated side chat with a Mediobot: do not create top workbench tab!
+          setWorkbenchTabs((prev) => prev.filter((t) => !(t.kind === 'chat' && t.threadId === threadId)));
+          setActiveWorkbenchTabIdState(null);
+        }
         pushLocation({ type: 'thread', threadId });
       } else {
         const existingThread = threads.find((t) => t.id === threadId);
@@ -2439,6 +2608,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       model,
       modelSelection,
       selectedMediobotId,
+      selectedAgent,
       agents,
       enabledModels,
       agentPreferences,
@@ -2546,6 +2716,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         activeModal,
         isSettingsView,
         isLibraryView,
+        isTerminalView,
         settingsTab,
         setSettingsTab,
         canGoBack,
@@ -2570,6 +2741,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         agentGroupHistory,
         agentGroupHistoryUnavailable,
         selectedMediobotId,
+        selectedAgent,
         agentPreferences,
         setAgentModelPreference,
         setAgentEffortPreference,
@@ -2584,6 +2756,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         closeSettings,
         openLibrary,
         closeLibrary,
+        openTerminal,
+        closeTerminal,
         setIsSettingsView,
         toggleSidebar,
         setSidebarOpen,

@@ -40,27 +40,27 @@ export const CodexGlyph: React.FC<CodexGlyphProps> = ({
         strokeWidth="1.2"
         filter="url(#emblem-shadow)"
       />
-      {/* Left Vertical Blinking Eye */}
+      {/* Left Vertical Blinking Eye (Widened pill) */}
       <rect
-        x="22.5"
+        x="19.5"
         y="21"
-        width="6.5"
+        width="10"
         height="22"
-        rx="3.25"
+        rx="5"
         fill={eyeFill}
         className="animate-eye-blink"
-        style={{ transformOrigin: '25.75px 32px' }}
+        style={{ transformBox: 'fill-box', transformOrigin: 'center' }}
       />
-      {/* Right Vertical Blinking Eye */}
+      {/* Right Vertical Blinking Eye (Widened pill) */}
       <rect
-        x="35"
+        x="34.5"
         y="21"
-        width="6.5"
+        width="10"
         height="22"
-        rx="3.25"
+        rx="5"
         fill={eyeFill}
         className="animate-eye-blink"
-        style={{ transformOrigin: '38.25px 32px' }}
+        style={{ transformBox: 'fill-box', transformOrigin: 'center' }}
       />
     </svg>
   );

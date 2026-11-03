@@ -29,8 +29,11 @@ export const NavRail: React.FC = () => {
     setActiveWorkbenchTabId,
     isSettingsView,
     isLibraryView,
+    isTerminalView,
     openLibrary,
     closeLibrary,
+    openTerminal,
+    closeTerminal,
     selectAgent,
     selectedMediobotId,
     user,
@@ -45,10 +48,11 @@ export const NavRail: React.FC = () => {
   const profileMenuRef = useRef<HTMLDivElement>(null);
   const profileBtnRef = useRef<HTMLButtonElement>(null);
 
-  const isHomeActive = !isSettingsView && !isLibraryView && isSidebarOpen && sidebarTab === 'home';
-  const isHistoryActive = !isSettingsView && !isLibraryView && isSidebarOpen && sidebarTab === 'history';
-  const isMaestroActive = !isSettingsView && !isLibraryView && isSidebarOpen && sidebarTab === 'maestro';
+  const isHomeActive = !isSettingsView && !isLibraryView && !isTerminalView && isSidebarOpen && sidebarTab === 'home';
+  const isHistoryActive = !isSettingsView && !isLibraryView && !isTerminalView && isSidebarOpen && sidebarTab === 'history';
+  const isMaestroActive = !isSettingsView && !isLibraryView && !isTerminalView && isSidebarOpen && sidebarTab === 'maestro';
   const isLibraryActive = !isSettingsView && isLibraryView;
+  const isTerminalActive = !isSettingsView && isTerminalView;
 
   const handleHomeClick = () => {
     if (isSettingsView) {
@@ -61,6 +65,9 @@ export const NavRail: React.FC = () => {
     }
     if (isLibraryView) {
       closeLibrary();
+    }
+    if (isTerminalView) {
+      closeTerminal();
     }
     selectAgent(null);
     if (!isSidebarOpen || sidebarTab !== 'home') {
@@ -82,6 +89,9 @@ export const NavRail: React.FC = () => {
     if (isLibraryView) {
       closeLibrary();
     }
+    if (isTerminalView) {
+      closeTerminal();
+    }
     if (!isSidebarOpen || sidebarTab !== 'history') {
       selectAgent(null);
       setSidebarTab('history');
@@ -92,7 +102,7 @@ export const NavRail: React.FC = () => {
   };
 
   const handleMaestroClick = () => {
-    selectAgent(null);
+    selectAgent('maestro');
     if (isSettingsView) {
       closeSettings();
       setSidebarTab('maestro');
@@ -101,6 +111,12 @@ export const NavRail: React.FC = () => {
     }
     if (isLibraryView) {
       closeLibrary();
+      setSidebarTab('maestro');
+      setSidebarOpen(true);
+      return;
+    }
+    if (isTerminalView) {
+      closeTerminal();
       setSidebarTab('maestro');
       setSidebarOpen(true);
       return;
@@ -117,10 +133,27 @@ export const NavRail: React.FC = () => {
     if (isSettingsView) {
       closeSettings();
     }
+    if (isTerminalView) {
+      closeTerminal();
+    }
     if (isLibraryView) {
       closeLibrary();
     } else {
       openLibrary();
+    }
+  };
+
+  const handleTerminalClick = () => {
+    if (isSettingsView) {
+      closeSettings();
+    }
+    if (isLibraryView) {
+      closeLibrary();
+    }
+    if (isTerminalView) {
+      closeTerminal();
+    } else {
+      openTerminal();
     }
   };
 
@@ -231,6 +264,42 @@ export const NavRail: React.FC = () => {
               }`}
             >
               Maestro
+            </span>
+          </button>
+
+          {/* CLI / Terminal Button: Placed directly above the Library button */}
+          <button
+            onClick={handleTerminalClick}
+            title="Terminal / CLI"
+            className={`w-10 h-10 flex items-center justify-center rounded-xl transition-colors group relative cursor-pointer active:scale-95 ${
+              isTerminalActive
+                ? isLight
+                  ? 'text-[#09090b] bg-[#dedee6]'
+                  : 'text-white bg-[#323137]'
+                : isLight
+                ? 'text-[#6b6a75] hover:text-[#09090b] hover:bg-[#dedee5]'
+                : 'text-[#8e8d96] hover:text-white hover:bg-[#323137]'
+            }`}
+          >
+            {/* Terminal prompt icon `>_` matching CLI identity */}
+            <svg
+              viewBox="0 0 24 24"
+              className="w-5 h-5 transition-transform group-hover:scale-105"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.8"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <polyline points="4 17 10 11 4 5" />
+              <line x1="12" y1="19" x2="20" y2="19" />
+            </svg>
+            <span
+              className={`pointer-events-none absolute left-[60px] top-1/2 -translate-y-1/2 px-2 py-1 text-[11px] font-medium rounded shadow-md whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity z-50 ${
+                isLight ? 'bg-[#ffffff] text-[#111827] border border-[#dcdce2]' : 'bg-[#1e1e22] text-[#e4e4e7] border border-[#2b2b30]'
+              }`}
+            >
+              Terminal / CLI
             </span>
           </button>
 

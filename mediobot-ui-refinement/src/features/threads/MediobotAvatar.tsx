@@ -10,7 +10,7 @@ export const MediobotAvatar: React.FC<{
   if (actor?.type !== 'mediobot') return null;
   const presentation = getMediobotPresentation(actor.presentationId ?? actor.mediobotId, actor.name);
   const dimensions = size === 'md' ? 'h-5 w-5' : size === 'xs' ? 'h-3.5 w-3.5' : 'h-4 w-4';
-  const eye = size === 'md' ? 'h-[7.5px] w-[3.5px]' : size === 'xs' ? 'h-[5.5px] w-[2.2px]' : 'h-[6.5px] w-[2.8px]';
+  const eye = size === 'md' ? 'h-[8px] w-[4.4px]' : size === 'xs' ? 'h-[5.5px] w-[2.8px]' : 'h-[7px] w-[3.6px]';
   const gap = size === 'md' ? 'gap-[2.5px]' : size === 'xs' ? 'gap-[1.5px]' : 'gap-[2px]';
   return (
     <span aria-hidden="true" data-testid={`actor-avatar-${presentation.id}`}

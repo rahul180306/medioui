@@ -13,6 +13,7 @@ import { ThreadView } from './features/threads/ThreadView';
 import { SettingsView } from './features/settings/SettingsView';
 import { ProjectModal } from './features/projects/ProjectModal';
 import { LibraryView } from './features/library/LibraryView';
+import { TerminalWorkspaceView } from './features/terminal/TerminalWorkspaceView';
 
 // Keep CodeMirror and its language modes out of the initial Main Chat bundle.
 // The editor loads when the user opens a file tab.
@@ -24,11 +25,14 @@ const MainWorkspace: React.FC = () => {
   const {
     isSidebarOpen,
     activeWorkbenchTab,
+    activeThread,
     activeModal,
     isSettingsView,
     isLibraryView,
+    isTerminalView,
     selectedMediobotId,
     closeSettings,
+    closeTerminal,
     theme,
   } = useApp();
 
@@ -43,8 +47,8 @@ const MainWorkspace: React.FC = () => {
       {/* 1. Left Narrow Navigation Rail */}
       <NavRail />
 
-      {/* 2. Collapsible Threads Drawer: Completely removed in the Library section alone */}
-      {!isLibraryView && <ThreadsDrawer />}
+      {/* 2. Collapsible Threads Drawer: Completely removed in the Library and Terminal sections */}
+      {!isLibraryView && !isTerminalView && <ThreadsDrawer />}
 
       {/* 3. Main Workspace Area */}
       <main
@@ -55,14 +59,14 @@ const MainWorkspace: React.FC = () => {
         {/* Desktop Top Chrome (< > [|] and [+]) */}
         <TopChrome />
 
-        {/* Viewport: Code Editor View, Empty State, Active Thread, Settings View, or Library View */}
+        {/* Viewport: Code Editor View, Empty State, Active Thread, Settings View, Library View, or Terminal View */}
         <div
           className={`flex-1 overflow-hidden flex flex-col ${
             isLight
-              ? isSidebarOpen && !isSettingsView && !isLibraryView
+              ? isSidebarOpen && !isSettingsView && !isLibraryView && !isTerminalView
                 ? 'bg-[#ffffff]'
                 : 'bg-[#ffffff] rounded-tl-[24px] shadow-sm'
-              : isSidebarOpen && !isSettingsView && !isLibraryView
+              : isSidebarOpen && !isSettingsView && !isLibraryView && !isTerminalView
                 ? 'bg-[#141415]'
                 : 'bg-[#141415] rounded-tl-[24px]'
           } transition-[background-color,border-radius] duration-[320ms] ease-[cubic-bezier(0.16,1,0.3,1)]`}
@@ -71,16 +75,16 @@ const MainWorkspace: React.FC = () => {
             <SettingsView onClose={closeSettings} />
           ) : isLibraryView ? (
             <LibraryView />
-          ) : selectedMediobotId && activeWorkbenchTab?.kind !== 'chat' ? (
-            <EmptyState />
-          ) : !activeWorkbenchTab ? (
-            <EmptyState />
-          ) : activeWorkbenchTab.kind === 'file' ? (
+          ) : isTerminalView ? (
+            <TerminalWorkspaceView onClose={closeTerminal} />
+          ) : activeWorkbenchTab?.kind === 'file' ? (
             <Suspense fallback={<div className="flex-1" aria-busy="true" />}>
               <CodeEditorView />
             </Suspense>
-          ) : (
+          ) : activeThread && activeThread.turns.length > 0 ? (
             <ThreadView />
+          ) : (
+            <EmptyState />
           )}
         </div>
       </main>

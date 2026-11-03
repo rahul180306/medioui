@@ -1,6 +1,6 @@
 import React, { useRef, useState, useEffect, useCallback } from 'react';
 import { ArrowLeft, ArrowRight, Plus, X, MessageSquare, ChevronLeft, ChevronRight } from 'lucide-react';
-import { useApp } from '../../state/AppContext';
+import { useApp, isSpecialistChatTab } from '../../state/AppContext';
 import { FileIcon } from '../../components/icons/FileIcon';
 import { ResourceStatusIndicator } from '../../components/ResourceStatusIndicator';
 
@@ -16,11 +16,14 @@ export const TopChrome: React.FC = () => {
     createNewChat,
     isSettingsView,
     isLibraryView,
+    isTerminalView,
+    closeTerminal,
     canGoBack,
     canGoForward,
     goBack,
     goForward,
     workbenchTabs,
+    threads,
     activeWorkbenchTabId,
     setActiveWorkbenchTabId,
     closeWorkbenchTab,
@@ -41,6 +44,9 @@ export const TopChrome: React.FC = () => {
     }
     if (isLibraryView) {
       closeLibrary();
+    }
+    if (isTerminalView) {
+      closeTerminal();
     }
     try {
       await openProjectDirectory();
@@ -84,13 +90,18 @@ export const TopChrome: React.FC = () => {
     draggedWidth: number;
   } | null>(null);
 
+  // Strictly filter out any specialist side-chat tabs (Maestro, Cody, Vision, etc.) from top workbench tabs
+  const visibleTabs = React.useMemo(() => {
+    return (workbenchTabs || []).filter((tab) => !isSpecialistChatTab(tab, threads));
+  }, [workbenchTabs, threads]);
+
   const updateIndicator = useCallback(() => {
-    if (!activeWorkbenchTabId || isSettingsView || !workbenchTabs || workbenchTabs.length === 0) {
+    if (!activeWorkbenchTabId || isSettingsView || isTerminalView || !visibleTabs || visibleTabs.length === 0) {
       setIndicatorStyle((prev) => (prev.opacity === 0 ? prev : { ...prev, opacity: 0 }));
       return;
     }
 
-    const activeIndex = workbenchTabs.findIndex((t) => t.id === activeWorkbenchTabId);
+    const activeIndex = visibleTabs.findIndex((t) => t.id === activeWorkbenchTabId);
     if (activeIndex === -1) {
       setIndicatorStyle((prev) => (prev.opacity === 0 ? prev : { ...prev, opacity: 0 }));
       return;
@@ -126,7 +137,7 @@ export const TopChrome: React.FC = () => {
       width: indicatorWidth,
       opacity: 1,
     });
-  }, [activeWorkbenchTabId, isSettingsView, workbenchTabs, activeDrag]);
+  }, [activeWorkbenchTabId, isSettingsView, visibleTabs, activeDrag]);
 
   useEffect(() => {
     updateIndicator();
@@ -156,7 +167,7 @@ export const TopChrome: React.FC = () => {
       el.removeEventListener('scroll', checkScroll);
       window.removeEventListener('resize', checkScroll);
     };
-  }, [checkScroll, workbenchTabs]);
+  }, [checkScroll, visibleTabs]);
 
   // Handle horizontal mouse wheel scrolling smoothly
   const handleWheel = (e: React.WheelEvent<HTMLDivElement>) => {
@@ -298,7 +309,7 @@ export const TopChrome: React.FC = () => {
   const handleTabPointerDown = (e: React.PointerEvent<HTMLDivElement>, index: number, tabId: string) => {
     if (e.button !== 0) return; // Only left-click
 
-    const widths = (workbenchTabs || []).map((_, i) => tabRefs.current[i]?.offsetWidth || 120);
+    const widths = (visibleTabs || []).map((_, i) => tabRefs.current[i]?.offsetWidth || 120);
     const draggedWidth = widths[index] || 120;
 
     dragRef.current = {
@@ -396,7 +407,7 @@ export const TopChrome: React.FC = () => {
           aria-label="Open folder from computer"
           title="Open folder from computer / Finder"
           className={`p-0.5 rounded transition-all duration-200 active:scale-90 shrink-0 cursor-pointer -ml-2.5 sm:-ml-3 ${
-            isSettingsView || isLibraryView ? 'hidden' : ''
+            isSettingsView || isLibraryView || isTerminalView ? 'hidden' : ''
           } ${
             isLight
               ? 'text-[#5c5b66] hover:text-[#09090b]'
@@ -419,7 +430,7 @@ export const TopChrome: React.FC = () => {
         </button>
       </div>
 
-      {/* Center: Open Workbench Tabs in Header (hidden when in settings view) */}
+      {/* Center: Open Workbench Tabs in Header (hidden when in settings view or terminal view) */}
       <div className="flex-1 flex items-center min-w-0 h-full relative group/tabbar overflow-hidden">
         {/* Scrollable Tabs Track - Strictly div:nth-of-type(1) */}
         <div
@@ -427,8 +438,8 @@ export const TopChrome: React.FC = () => {
           onWheel={handleWheel}
           className="flex-1 flex items-center gap-1.5 overflow-x-auto scrollbar-none h-full py-1.5 px-1 scroll-smooth select-none relative"
         >
-          {!isSettingsView &&
-            workbenchTabs?.map((tab, index) => {
+          {!isSettingsView && !isTerminalView &&
+            visibleTabs?.map((tab, index) => {
               const isActive = activeWorkbenchTabId === tab.id;
               const title = tab.kind === 'file' ? tab.name : tab.title;
 

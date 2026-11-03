@@ -8,7 +8,7 @@ import { EmptyState } from '../empty/EmptyState';
 import { TimelineNavigator } from './TimelineNavigator';
 import { MediobotAvatar } from './MediobotAvatar';
 import { buildTimelineNavigatorAnchors, conversationActorName, projectThreadTimeline } from './timeline';
-import { getMediobotPresentation } from '../mediobots/presentation';
+import { getMediobotPresentation, getMediobotCursorColor, normalizeMediobotId } from '../mediobots/presentation';
 import type { ConversationActor, ThreadItem } from '../../types';
 import LatticeLoader from '../../components/LatticeLoader';
 import { runtimeInstance } from '../../runtime/client';
@@ -116,11 +116,12 @@ export const ThreadView: React.FC = () => {
   const isLight = theme === 'light';
 
   // Determine whether this conversation is an individual specialist's separate workspace/chat
-  // versus the main team/orchestration chat.
-  const isSpecificMediobotChat = Boolean(
-    (selectedMediobotId && selectedMediobotId !== 'maestro') ||
-    (activeThread?.specialistId && activeThread.specialistId !== 'maestro')
-  );
+  const cleanSpecId = selectedMediobotId
+    ? normalizeMediobotId(selectedMediobotId)
+    : activeThread?.specialistId
+    ? normalizeMediobotId(activeThread.specialistId)
+    : null;
+  const isSpecificMediobotChat = Boolean(cleanSpecId);
   const isMainChat = !isSpecificMediobotChat;
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [resumingTaskId, setResumingTaskId] = useState<string | null>(null);
@@ -145,6 +146,8 @@ export const ThreadView: React.FC = () => {
     setScrollRoot(previous => previous === element ? previous : element);
   }, []);
   const targetElements = useRef(new Map<string, HTMLElement>());
+  const typedMessageIds = useRef<Set<string>>(new Set<string>());
+  const mountTimestamp = useRef<number>(Date.now());
   const uniqueTurns = useMemo(() => {
     const seen = new Set<string>();
     const list: NonNullable<typeof activeThread>['turns'] = [];
@@ -181,6 +184,19 @@ export const ThreadView: React.FC = () => {
     wasNearBottom.current = scrollRoot.scrollHeight - scrollRoot.scrollTop - scrollRoot.clientHeight < 120;
     restoredThreadId.current = activeThread.id;
   }, [activeThread?.id, scrollRoot]);
+
+  // Pre-seed any historical completed turns immediately on render so they don't re-type on refresh or thread switch
+  const seededThreadIdRef = useRef<string | null>(null);
+  if (activeThread && seededThreadIdRef.current !== activeThread.id) {
+    seededThreadIdRef.current = activeThread.id;
+    for (const turn of activeThread.turns ?? []) {
+      if (turn.status !== 'running') {
+        for (const item of turn.items ?? []) {
+          typedMessageIds.current.add(item.id);
+        }
+      }
+    }
+  }
 
   // Follow new activity only while the reader is already at the bottom.
   useEffect(() => {
@@ -235,6 +251,35 @@ export const ThreadView: React.FC = () => {
           catch { /* Session storage may be unavailable in private browsing. */ }
         }
       }} data-testid="thread-scroll-root" className="flex-1 overflow-y-auto px-4 py-6 md:px-8 max-w-3xl w-full mx-auto space-y-8">
+        {isSpecificMediobotChat && cleanSpecId && (
+          <div className={`p-3.5 rounded-2xl border flex items-center justify-between select-none shadow-2xs mb-4 ${
+            isLight
+              ? 'bg-[#f8f9fa] border-[#e2e4e8] text-[#18181b]'
+              : 'bg-[#18181d] border-[#292832] text-neutral-200'
+          }`}>
+            <div className="flex items-center gap-3">
+              <MediobotAvatar actor={{ type: 'mediobot', mediobotId: cleanSpecId }} size="sm" />
+              <div className="flex flex-col">
+                <div className="flex items-center gap-2">
+                  <span className={`text-xs font-semibold ${
+                    (() => {
+                      const p = getMediobotPresentation(cleanSpecId);
+                      return isLight ? p.lightText : p.darkText;
+                    })()
+                  }`}>
+                    {getMediobotPresentation(cleanSpecId).displayName}
+                  </span>
+                  <span className={`text-[10px] px-1.5 py-0.5 rounded font-mono ${isLight ? 'bg-black/5 text-neutral-600' : 'bg-white/10 text-neutral-400'}`}>
+                    Direct Mind & Chat
+                  </span>
+                </div>
+                <span className={`text-[11px] ${isLight ? 'text-neutral-500' : 'text-neutral-400'}`}>
+                  {getMediobotPresentation(cleanSpecId).specialization}
+                </span>
+              </div>
+            </div>
+          </div>
+        )}
         {uniqueTurns.map((turn, turnIdx) => {
           const entries = entriesByTurn.get(turn.id) ?? [];
           const isTurnRunning = turn.status === 'running' || turn.status === 'pause_requested';
@@ -400,22 +445,17 @@ export const ThreadView: React.FC = () => {
                 const actor: ConversationActor | undefined = first.actor;
                 const isSystem = actor?.type === 'system';
                 const presentation = actor?.type === 'mediobot'
-                  ? getMediobotPresentation(actor.presentationId ?? actor.mediobotId, actor.name)
+                  ? getMediobotPresentation(actor.presentationId ?? actor.mediobotId ?? actor.name, actor.name)
                   : null;
 
-                // In Main Chat alone, each mediobot's color reflects on the font color for dark and light mode!
-                // In the specific mediobot chat, it is normal white on dark mode, normal black on light mode.
-                const botTextColor = isSpecificMediobotChat
-                  ? (isLight ? 'text-[#18181b]' : 'text-neutral-100')
-                  : presentation
-                    ? (isLight ? presentation.lightText : presentation.darkText)
-                    : (isLight ? 'text-[#18181b]' : 'text-neutral-200');
+                // Each mediobot's signature theme color reflects on their messages and header across both Main Chat and specialist chats
+                const botTextColor = presentation
+                  ? (isLight ? presentation.lightText : presentation.darkText)
+                  : (isLight ? 'text-[#18181b]' : 'text-neutral-200');
 
-                const botNameColor = isSpecificMediobotChat
-                  ? (isLight ? 'text-[#18181b]' : 'text-neutral-200')
-                  : presentation
-                    ? (isLight ? presentation.lightText : presentation.darkText)
-                    : (isLight ? 'text-[#64748b]' : 'text-neutral-400');
+                const botNameColor = presentation
+                  ? (isLight ? presentation.lightText : presentation.darkText)
+                  : (isLight ? 'text-[#64748b]' : 'text-neutral-400');
 
                 const lastMessageIndex = entries.findLastIndex((e) => e.kind === 'message');
                 const isLastMessageInTurn = entryIndex === lastMessageIndex;
@@ -425,6 +465,14 @@ export const ThreadView: React.FC = () => {
                   .map((e) => e.items[0]?.text || '')
                   .filter((t) => Boolean(t.trim()) && !t.startsWith('Using Gemini'))
                   .join('\n\n') || allAssistantMessages.map((e) => e.items[0]?.text || '').join('\n\n');
+
+                const botCursorColor = actor?.type === 'mediobot'
+                  ? getMediobotCursorColor(actor.presentationId ?? actor.mediobotId ?? actor.name?.toLowerCase(), isLight)
+                  : (isLight ? '#18181b' : '#f4f4f5');
+
+                // Animate typing only the first time for newly arriving messages in the active session
+                const isHistorical = typedMessageIds.current.has(first.id);
+                const shouldAnimateTyping = !isHistorical && (turn.status === 'running' || (first.timestamp ? first.timestamp >= mountTimestamp.current - 2500 : true));
 
                 return (
                   <React.Fragment key={entry.id}>
@@ -458,7 +506,15 @@ export const ThreadView: React.FC = () => {
                         )}
                       </div>
                       <div className={`text-sm ${botTextColor} leading-relaxed select-text`}>
-                        <MarkdownContent content={first.text || ''} textColor={botTextColor} />
+                        <MarkdownContent
+                          content={first.text || ''}
+                          textColor={botTextColor}
+                          animateTyping={shouldAnimateTyping}
+                          cursorColor={botCursorColor}
+                          onTypingComplete={() => {
+                            typedMessageIds.current.add(first.id);
+                          }}
+                        />
                       </div>
 
                       {/* Overall turn response copy button: Shown ONCE on the final assistant response of this turn */}
