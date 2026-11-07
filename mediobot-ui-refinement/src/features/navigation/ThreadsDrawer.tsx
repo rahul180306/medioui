@@ -21,15 +21,18 @@ import { runtimeInstance } from '../../runtime/client';
 import { ExplorerInlineNameEditor } from './ExplorerInlineNameEditor';
 import { DeleteConfirmModal } from './DeleteConfirmModal';
 import { ExplorerContextMenu, type ContextMenuTarget } from './ExplorerContextMenu';
-import { getMediobotPresentation } from '../mediobots/presentation';
+import { getMediobotPresentation, normalizeMediobotId } from '../mediobots/presentation';
+import { MediobotAvatar } from '../threads/MediobotAvatar';
 import RubberSegment from '../../components/RubberSegment';
 import AnimatedList from '../../components/AnimatedList';
 import FuseButton from '../../components/FuseButton';
+import { SpecialistStatusIndicator, getSpecialistStatus } from './NavRail';
 
 const DEFAULT_PROJECT_TREE: FileNode[] = [];
 
 const formatShortModel = (key?: string): string => {
   if (!key) return 'Default';
+  if (key.includes('gemini-3-flash') || key.includes('gemini-3')) return 'Gemini 3 Flash';
   if (key.includes('MiniMax')) return 'MiniMax M2.7';
   if (key.includes('diffusiongemma')) return 'DiffGemma';
   if (key.includes('gpt-4o-mini')) return 'GPT-4o mini';
@@ -56,7 +59,11 @@ export const ThreadsDrawer: React.FC = () => {
     activeThreadId,
     setActiveThreadId,
     createNewChat,
+    createNewTeam,
+    createNewMainTeamChat,
+    activeTeamId,
     setActiveModal,
+    openLibrary,
     agents,
     selectedMediobotId,
     selectAgent,
@@ -72,6 +79,31 @@ export const ThreadsDrawer: React.FC = () => {
   } = useApp();
   const isLight = theme === 'light';
   const specialistAgents = agents.filter((agent) => agent.group === 'specialist');
+
+  const activeThread = useMemo(() => {
+    return threads.find((t) => t.id === activeThreadId) ?? null;
+  }, [threads, activeThreadId]);
+
+  const activeSpecialistIds = useMemo(() => {
+    if (!activeThread) return new Set<string>();
+    const ids = new Set<string>();
+    if (activeThread.specialistId && activeThread.specialistId !== 'maestro') {
+      ids.add(activeThread.specialistId.toLowerCase());
+    }
+    for (const turn of activeThread.turns) {
+      for (const item of turn.items) {
+        if (item.actor?.type === 'mediobot' && item.actor.mediobotId && item.actor.mediobotId !== 'maestro') {
+          ids.add(item.actor.mediobotId.toLowerCase());
+        }
+      }
+    }
+    return ids;
+  }, [activeThread]);
+
+  const displayedSpecialists = useMemo(() => {
+    if (activeSpecialistIds.size === 0) return [];
+    return specialistAgents.filter((agent) => activeSpecialistIds.has(agent.id.toLowerCase()));
+  }, [specialistAgents, activeSpecialistIds]);
 
   const [treeData, setTreeData] = useState<FileNode[]>(DEFAULT_PROJECT_TREE);
   const [isRootExpanded, setIsRootExpanded] = useState<boolean>(() => {
@@ -415,20 +447,139 @@ export const ThreadsDrawer: React.FC = () => {
     }
   };
 
-  // Deduplicate threads by unique id to prevent duplicate keys in history list
-  // In the general history drawer, only Main Chat threads appear. Dedicated agent chats stay in their agent workspace.
+  // Deduplicate threads by unique id and preserve specialist threads in history
   const uniqueThreads = useMemo(() => {
     const seen = new Set<string>();
     return (threads || []).filter((t) => {
       if (!t.id || seen.has(t.id)) return false;
-      if (t.specialistId) return false;
       seen.add(t.id);
       return true;
     });
   }, [threads]);
 
+  const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>(() => {
+    try {
+      const stored = localStorage.getItem('mediobot_collapsed_agent_sections');
+      return stored ? JSON.parse(stored) : {};
+    } catch {
+      return {};
+    }
+  });
+
+  const toggleSectionCollapse = useCallback((agentId: string) => {
+    setCollapsedSections((prev) => {
+      const next = { ...prev, [agentId]: !prev[agentId] };
+      try {
+        localStorage.setItem('mediobot_collapsed_agent_sections', JSON.stringify(next));
+      } catch {}
+      return next;
+    });
+  }, []);
+
+  const agentGroups = useMemo(() => {
+    const groupsMap = new Map<string, {
+      agentId: string;
+      agentName: string;
+      isMaestro: boolean;
+      threads: Array<{
+        id: string;
+        title: string;
+        cleanTitle: string;
+        specialistId: string | null;
+        updatedAt: number;
+      }>;
+    }>();
+
+    const standardAgents = [
+      { id: 'maestro', name: 'Main Team' },
+      { id: 'cody', name: 'Cody' },
+      { id: 'tester', name: 'Tester' },
+      { id: 'doc', name: 'Doc' },
+      { id: 'research', name: 'Research' },
+      { id: 'vision', name: 'Vision' },
+      { id: 'cli', name: 'CLI' },
+      { id: 'scraapy', name: 'Scraapy' },
+    ];
+
+    for (const sa of standardAgents) {
+      groupsMap.set(sa.id, {
+        agentId: sa.id,
+        agentName: sa.name,
+        isMaestro: sa.id === 'maestro',
+        threads: [],
+      });
+    }
+
+    for (const agent of agents) {
+      const cleanId = normalizeMediobotId(agent.id);
+      if (!groupsMap.has(cleanId)) {
+        groupsMap.set(cleanId, {
+          agentId: cleanId,
+          agentName: agent.name,
+          isMaestro: cleanId === 'maestro',
+          threads: [],
+        });
+      }
+    }
+
+    for (const t of uniqueThreads) {
+      const rawOwner = t.ownerAgent || (t as any).owner_agent || t.specialistId || 'maestro';
+      const cleanOwner = normalizeMediobotId(rawOwner) || 'maestro';
+      const isTeam = t.threadType === 'team' || cleanOwner === 'maestro';
+      const targetAgentId = isTeam ? 'maestro' : cleanOwner;
+
+      if (!groupsMap.has(targetAgentId)) {
+        const matchingAgent = agents.find((a) => normalizeMediobotId(a.id) === targetAgentId);
+        groupsMap.set(targetAgentId, {
+          agentId: targetAgentId,
+          agentName: matchingAgent?.name || (targetAgentId.charAt(0).toUpperCase() + targetAgentId.slice(1)),
+          isMaestro: false,
+          threads: [],
+        });
+      }
+
+      const group = groupsMap.get(targetAgentId)!;
+      const agentDisplayName = group.isMaestro ? 'Maestro' : group.agentName;
+      const cleanTitle = t.title
+        .replace(new RegExp(`^${agentDisplayName}\\s*·\\s*`, 'i'), '')
+        .replace(new RegExp(`^${group.agentId}\\s*·\\s*`, 'i'), '')
+        .trim() || t.title;
+
+      group.threads.push({
+        id: t.id,
+        title: t.title,
+        cleanTitle,
+        specialistId: isTeam ? null : targetAgentId,
+        updatedAt: t.updatedAt ?? 0,
+      });
+    }
+
+    for (const group of groupsMap.values()) {
+      group.threads.sort((a, b) => b.updatedAt - a.updatedAt);
+    }
+
+    return Array.from(groupsMap.values()).filter((g) => g.threads.length > 0 || g.isMaestro);
+  }, [uniqueThreads, agents]);
+
+  const contextAgentId = useMemo(() => {
+    if (!activeThread) return null;
+    const rawOwner = activeThread.ownerAgent || (activeThread as any).owner_agent || activeThread.specialistId;
+    const cleanOwner = rawOwner ? normalizeMediobotId(rawOwner) : null;
+    return cleanOwner && cleanOwner !== 'maestro' ? cleanOwner : null;
+  }, [activeThread]);
+
+  const contextAgent = useMemo(() => {
+    if (!contextAgentId) return null;
+    return agents.find((a) => normalizeMediobotId(a.id) === contextAgentId) ?? null;
+  }, [contextAgentId, agents]);
+
   const allItems = useMemo(
-    () => uniqueThreads.map((t) => ({ id: t.id, title: t.title })),
+    () => uniqueThreads.map((t) => ({
+      id: t.id,
+      title: t.title,
+      specialistId: t.specialistId ? normalizeMediobotId(t.specialistId) : null,
+      updatedAt: t.updatedAt ?? 0,
+    })).sort((a, b) => b.updatedAt - a.updatedAt),
     [uniqueThreads]
   );
 
@@ -441,6 +592,7 @@ export const ThreadsDrawer: React.FC = () => {
     return filteredItems.map((item) => ({
       id: item.id,
       title: item.title,
+      specialistId: item.specialistId,
       isDeleting: deletingThreadIds.has(String(item.id)),
       deleteFuseMs: 2500,
     }));
@@ -725,10 +877,21 @@ export const ThreadsDrawer: React.FC = () => {
                     </div>
                   </div>
 
-                  {/* Agent Count Pill matching screenshot */}
-                  <span className={`text-[12px] px-2 py-0.5 rounded-full ${isLight ? 'bg-[#eaebee] text-[#6b6a75]' : 'bg-[#27272e] text-neutral-400'} font-normal`}>
-                    {specialistAgents.length}
-                  </span>
+                  {/* Agent Count Pill & Status Indicator */}
+                  <div className="flex items-center gap-2">
+                    <span className={`text-[12px] px-2 py-0.5 rounded-full ${isLight ? 'bg-[#eaebee] text-[#6b6a75]' : 'bg-[#27272e] text-neutral-400'} font-normal`}>
+                      {displayedSpecialists.length}
+                    </span>
+                    {(() => {
+                      const maestroAgent = agents.find((a) => a.id === 'maestro') || { id: 'maestro', name: 'Maestro', status: 'idle', availability: 'available' };
+                      const maestroStatus = getSpecialistStatus(maestroAgent);
+                      return (
+                        <div title={maestroStatus.tooltip}>
+                          <SpecialistStatusIndicator status={maestroStatus.status} />
+                        </div>
+                      );
+                    })()}
+                  </div>
                 </button>
               );
             })()}
@@ -739,75 +902,102 @@ export const ThreadsDrawer: React.FC = () => {
 
           {/* 2. Scrollable Dynamic MedioBots List matching uploaded reference */}
           <div className="flex-1 overflow-y-auto px-3.5 space-y-2 scrollbar-thin scrollbar-thumb-neutral-700 pb-4">
-            {specialistAgents.map((agent) => {
-              const isSelected = selectedMediobotId === agent.id;
-              const isWorking = agent.status === 'working';
-              const avatar = getMediobotPresentation(agent.id, agent.name, agent.role);
-              const botPref = getAgentPreference(agent.id);
-
-              return (
+            {displayedSpecialists.length === 0 ? (
+              <div className="py-8 px-3 flex flex-col items-center justify-center text-center">
+                <div className="w-8 h-8 rounded-full bg-neutral-500/10 flex items-center justify-center mb-2.5">
+                  <span className="w-1.5 h-1.5 rounded-full bg-neutral-400 animate-pulse" />
+                </div>
+                <p className={`text-[13px] font-medium leading-snug mb-1 ${isLight ? 'text-neutral-700' : 'text-neutral-300'}`}>
+                  No active specialists
+                </p>
+                <p className={`text-[11.5px] leading-relaxed max-w-[210px] mb-3.5 ${isLight ? 'text-neutral-500' : 'text-neutral-400'}`}>
+                  Describe your goal to Maestro to dynamically recruit specialists for this task.
+                </p>
                 <button
-                  key={agent.id}
-                  onClick={() => selectAgent(agent.id)}
-                  data-testid={`mediobot-select-${agent.id}`}
-                  aria-pressed={isSelected}
-                  title={`${agent.name} · ${agent.activityState ?? agent.status} (${formatShortModel(botPref.modelKey)} · ${botPref.effort}) — ${agent.role || ''}`}
-                  data-activity-state={agent.activityState ?? agent.status}
-                  className={`w-full flex items-center justify-between px-3 py-2 rounded-xl transition-all duration-200 ease-[cubic-bezier(0.16,1,0.3,1)] cursor-pointer text-left group ${
-                    isSelected
-                      ? isLight
-                        ? 'bg-[#ffffff] text-[#09090b] shadow-xs border border-[#dcdce2]'
-                        : 'bg-[#2f2e36] text-white shadow-xs border border-[#3a3944]'
-                      : isLight
-                      ? 'hover:bg-[#eaebee] text-[#374151] hover:text-[#09090b] border border-transparent'
-                      : 'hover:bg-[#32313a] text-neutral-300 hover:text-white border border-transparent'
+                  type="button"
+                  onClick={() => openLibrary()}
+                  className={`text-[12px] font-medium px-3 py-1.5 rounded-lg transition-colors cursor-pointer ${
+                    isLight
+                      ? 'bg-neutral-100 hover:bg-neutral-200 text-neutral-800 border border-neutral-300/70'
+                      : 'bg-white/5 hover:bg-white/10 text-neutral-200 border border-white/10'
                   }`}
                 >
-                  <div className="flex items-center gap-3 min-w-0 flex-1">
-                    {/* Circle Avatar with two vertical blinking eyes */}
-                    <div
-                      className={`w-[22px] h-[22px] rounded-full ${avatar.avatar} flex items-center justify-center gap-[2.5px] shrink-0 shadow-xs transition-transform group-hover:scale-105`}
-                    >
-                      <span
-                        className={`w-[3.5px] h-[7.5px] rounded-full ${avatar.eye} animate-eye-blink block`}
-                        style={{ animationDelay: avatar.delay }}
-                      />
-                      <span
-                        className={`w-[3.5px] h-[7.5px] rounded-full ${avatar.eye} animate-eye-blink block`}
-                        style={{ animationDelay: avatar.delay }}
-                      />
-                    </div>
-
-                    {/* Agent Name & configured model pill */}
-                    <div className="flex items-center justify-between gap-1.5 min-w-0 flex-1">
-                      <span
-                        className={`truncate text-[14.5px] font-medium transition-colors ${isLight ? avatar.lightText : avatar.darkText}`}
-                      >
-                        {agent.name}
-                      </span>
-                      <span
-                        className={`text-[10px] font-mono px-1.5 py-0.5 rounded-md shrink-0 transition-colors ${
-                          isSelected
-                            ? isLight
-                              ? 'bg-black/5 text-neutral-800 font-semibold'
-                              : 'bg-white/10 text-white font-medium'
-                            : isLight
-                            ? 'bg-[#eaebee] text-neutral-500'
-                            : 'bg-[#25252c] text-neutral-400'
-                        }`}
-                      >
-                        {formatShortModel(botPref.modelKey)} · {botPref.effort}
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* Subtle active status indicator dot when working */}
-                  {isWorking && (
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping mr-1 shrink-0 ml-1.5" />
-                  )}
+                  Browse Library
                 </button>
-              );
-            })}
+              </div>
+            ) : (
+              displayedSpecialists.map((agent) => {
+                const isSelected = selectedMediobotId === agent.id;
+                const isWorking = agent.status === 'working';
+                const avatar = getMediobotPresentation(agent.id, agent.name, agent.role);
+                const botPref = getAgentPreference(agent.id);
+                const statusInfo = getSpecialistStatus(agent);
+
+                return (
+                  <button
+                    key={agent.id}
+                    onClick={() => selectAgent(agent.id)}
+                    data-testid={`mediobot-select-${agent.id}`}
+                    aria-pressed={isSelected}
+                    title={statusInfo.tooltip}
+                    data-activity-state={agent.activityState ?? agent.status}
+                    data-agent-status={statusInfo.status}
+                    className={`w-full flex items-center justify-between px-3 py-2 rounded-xl transition-all duration-200 ease-[cubic-bezier(0.16,1,0.3,1)] cursor-pointer text-left group ${
+                      isSelected
+                        ? isLight
+                          ? 'bg-[#ffffff] text-[#09090b] shadow-xs border border-[#dcdce2]'
+                          : 'bg-[#2f2e36] text-white shadow-xs border border-[#3a3944]'
+                        : isLight
+                        ? 'hover:bg-[#eaebee] text-[#374151] hover:text-[#09090b] border border-transparent'
+                        : 'hover:bg-[#32313a] text-neutral-300 hover:text-white border border-transparent'
+                    }`}
+                  >
+                    <div className="flex items-center gap-3 min-w-0 flex-1">
+                      {/* Circle Avatar with two vertical blinking eyes */}
+                      <div
+                        className={`w-[22px] h-[22px] rounded-full ${avatar.avatar} flex items-center justify-center gap-[2.5px] shrink-0 shadow-xs transition-transform group-hover:scale-105`}
+                      >
+                        <span
+                          className={`w-[3.5px] h-[7.5px] rounded-full ${avatar.eye} animate-eye-blink block`}
+                          style={{ animationDelay: avatar.delay }}
+                        />
+                        <span
+                          className={`w-[3.5px] h-[7.5px] rounded-full ${avatar.eye} animate-eye-blink block`}
+                          style={{ animationDelay: avatar.delay }}
+                        />
+                      </div>
+
+                      {/* Agent Name & configured model pill */}
+                      <div className="flex items-center justify-between gap-1.5 min-w-0 flex-1">
+                        <span
+                          className={`truncate text-[14.5px] font-medium transition-colors ${isLight ? avatar.lightText : avatar.darkText}`}
+                        >
+                          {agent.name}
+                        </span>
+                        <span
+                          className={`text-[10px] font-mono px-1.5 py-0.5 rounded-md shrink-0 transition-colors ${
+                            isSelected
+                              ? isLight
+                                ? 'bg-black/5 text-neutral-800 font-semibold'
+                                : 'bg-white/10 text-white font-medium'
+                              : isLight
+                              ? 'bg-[#eaebee] text-neutral-500'
+                              : 'bg-[#25252c] text-neutral-400'
+                          }`}
+                        >
+                          {formatShortModel(botPref.modelKey)} · {botPref.effort}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Status Indicator */}
+                    <div className="shrink-0 ml-2" title={statusInfo.tooltip}>
+                      <SpecialistStatusIndicator status={statusInfo.status} />
+                    </div>
+                  </button>
+                );
+              })
+            )}
           </div>
         </div>
       ) : sidebarTab === 'home' ? (
@@ -1068,128 +1258,315 @@ export const ThreadsDrawer: React.FC = () => {
 
             <button
               onClick={() => {
-                createNewChat();
+                if (contextAgentId) {
+                  createNewChat(contextAgentId, activeTeamId);
+                } else {
+                  createNewTeam();
+                }
               }}
-              className={`w-full flex items-center gap-2.5 px-3 py-1.5 text-[12.5px] font-medium rounded-lg transition-colors cursor-pointer ${
+              className={`w-full flex items-center justify-between px-3 py-1.5 text-[12.5px] font-medium rounded-lg transition-colors cursor-pointer ${
                 isLight
                   ? 'text-[#18181b] hover:text-[#09090b] hover:bg-[#eaebee]'
                   : 'text-neutral-200 hover:text-white hover:bg-[#222227]'
               }`}
             >
-              <SquarePen className={`w-4 h-4 ${isLight ? 'text-[#6b6a75]' : 'text-neutral-300'} stroke-[1.75]`} />
-              <span>New chat</span>
+              <div className="flex items-center gap-2.5">
+                <SquarePen className={`w-4 h-4 ${isLight ? 'text-[#6b6a75]' : 'text-neutral-300'} stroke-[1.75]`} />
+                <span>{contextAgent ? `New ${contextAgent.name} chat` : 'New chat'}</span>
+              </div>
+              {contextAgent && (
+                <span
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    createNewChat(null);
+                  }}
+                  className={`text-[10.5px] px-1.5 py-0.5 rounded border transition-colors ${
+                    isLight
+                      ? 'border-neutral-300 hover:bg-neutral-200 text-neutral-600'
+                      : 'border-white/10 hover:bg-white/10 text-neutral-400'
+                  }`}
+                  title="Start Team Chat instead"
+                >
+                  Team
+                </span>
+              )}
             </button>
           </div>
 
-          {/* Scrollable History List with AnimatedList */}
-          <div className="w-[270px] min-w-[270px] flex-1 overflow-hidden px-2">
-            {filteredItems.length === 0 ? (
-              <div className={`px-3 py-6 text-center text-xs ${isLight ? 'text-[#9ca3af]' : 'text-neutral-500'}`}>
-                {searchQuery ? 'No matching conversations' : 'No conversations yet'}
-              </div>
-            ) : (
-              <AnimatedList
-                items={animatedHistoryItems}
-                initialSelectedIndex={activeHistoryIndex}
-                onItemSelect={(selectedItem) => {
-                  if (selectedItem && typeof selectedItem === 'object' && selectedItem.id) {
-                    if (deletingThreadIds.has(String(selectedItem.id))) return;
-                    openChatTab(String(selectedItem.id));
-                  }
-                }}
-                renderItem={(itemObj) => {
-                  const entry = typeof itemObj === 'object' ? itemObj : { id: itemObj, title: String(itemObj) };
-                  const isDeleting = deletingThreadIds.has(String(entry.id));
-
-                  return (
-                    <div
-                      key={entry.id}
-                      onClick={(e) => {
-                        if (isDeleting) e.stopPropagation();
-                      }}
-                      className={`relative w-full flex items-center justify-between text-left group transition-colors ${
-                        isLight ? 'text-[#18181b]' : 'text-neutral-200'
-                      }`}
-                    >
-                      <span className="truncate flex-1 pr-2 font-medium text-[13px]">{entry.title}</span>
-
-                      {isDeleting ? (
-                        <div className="flex items-center gap-1 shrink-0 z-10" onClick={(e) => e.stopPropagation()}>
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              undoDeleteThread(String(entry.id));
-                            }}
-                            title="Undo deletion"
-                            className="shrink-0 flex items-center gap-1 px-2.5 py-0.5 rounded-lg bg-red-600 hover:bg-red-700 text-white text-[11px] font-semibold shadow-xs active:scale-95 transition-all cursor-pointer"
-                          >
-                            <RotateCcw className="w-3 h-3 stroke-[2.5]" />
-                            <span>Undo</span>
-                          </button>
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              confirmDeleteThread(String(entry.id));
-                            }}
-                            title="Delete immediately"
-                            className="p-1 rounded-md text-red-400 hover:text-white hover:bg-red-600/40 transition-all cursor-pointer"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
+          {/* Scrollable History List */}
+          <div className="w-[270px] min-w-[270px] flex-1 overflow-y-auto px-2">
+            {searchQuery ? (
+              filteredItems.length === 0 ? (
+                <div className={`px-3 py-6 text-center text-xs ${isLight ? 'text-[#9ca3af]' : 'text-neutral-500'}`}>
+                  No matching conversations
+                </div>
+              ) : (
+                <div className="space-y-1">
+                  {filteredItems.map((item) => {
+                    const isDeleting = deletingThreadIds.has(item.id);
+                    const isActive = item.id === activeThreadId;
+                    return (
+                      <div
+                        key={item.id}
+                        onClick={() => {
+                          if (isDeleting) return;
+                          openChatTab(item.id);
+                        }}
+                        className={`group relative w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-left text-xs transition-colors cursor-pointer ${
+                          isActive
+                            ? isLight
+                              ? 'bg-neutral-200/80 font-medium text-neutral-900'
+                              : 'bg-[#27272d] font-medium text-white shadow-2xs'
+                            : isLight
+                            ? 'hover:bg-neutral-100 text-neutral-700'
+                            : 'hover:bg-[#1a1a1e] text-neutral-400 hover:text-neutral-200'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2 truncate flex-1 pr-2">
+                          {item.specialistId && item.specialistId !== 'maestro' ? (
+                            <span
+                              className={`shrink-0 text-[10px] font-semibold uppercase px-1.5 py-0.5 rounded tracking-wide ${
+                                item.specialistId === 'cody'
+                                  ? isLight ? 'bg-amber-100 text-amber-800' : 'bg-amber-950/60 text-amber-300 border border-amber-800/40'
+                                  : item.specialistId === 'tester'
+                                  ? isLight ? 'bg-purple-100 text-purple-800' : 'bg-purple-950/60 text-purple-300 border border-purple-800/40'
+                                  : isLight ? 'bg-neutral-200/80 text-neutral-800' : 'bg-neutral-800 text-neutral-300'
+                              }`}
+                            >
+                              {item.specialistId}
+                            </span>
+                          ) : (
+                            <span className={`shrink-0 text-[10px] font-semibold uppercase px-1.5 py-0.5 rounded tracking-wide ${
+                              isLight ? 'bg-blue-50 text-blue-700' : 'bg-blue-950/50 text-blue-300 border border-blue-800/30'
+                            }`}>
+                              Team
+                            </span>
+                          )}
+                          <span className="truncate font-medium text-[13px]">{item.title}</span>
                         </div>
-                      ) : (
-                        <span className="flex items-center opacity-0 group-hover:opacity-100 focus-within:opacity-100 shrink-0">
-                          <button
-                            aria-label={`Rename ${entry.title}`}
-                            title="Rename conversation"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              const next = window.prompt('Rename conversation', entry.title);
-                              if (next && next.trim() && next.trim() !== entry.title) {
-                                renameThread(String(entry.id), next.trim());
-                              }
-                            }}
-                            className={`p-1 transition-colors cursor-pointer ${
-                              isLight
-                                ? 'text-[#6b6a75] hover:text-[#09090b]'
-                                : 'text-neutral-400 hover:text-white'
-                            }`}
-                          >
-                            <Pencil className="w-3 h-3" />
-                          </button>
-                          <button
-                            aria-label={`Delete ${entry.title}`}
-                            title="Delete conversation"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              startDeletingThread(String(entry.id));
-                            }}
-                            className={`p-1 transition-colors cursor-pointer ${
-                              isLight
-                                ? 'text-[#6b6a75] hover:text-red-600'
-                                : 'text-neutral-400 hover:text-red-400'
-                            }`}
-                          >
-                            <Trash2 className="w-3 h-3" />
-                          </button>
-                        </span>
+
+                        {isDeleting ? (
+                          <div className="flex items-center gap-1 shrink-0 z-10" onClick={(e) => e.stopPropagation()}>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                undoDeleteThread(String(item.id));
+                              }}
+                              title="Undo deletion"
+                              className="shrink-0 flex items-center gap-1 px-2.5 py-0.5 rounded-lg bg-red-600 hover:bg-red-700 text-white text-[11px] font-semibold shadow-xs active:scale-95 transition-all cursor-pointer"
+                            >
+                              <RotateCcw className="w-3 h-3 stroke-[2.5]" />
+                              <span>Undo</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                confirmDeleteThread(String(item.id));
+                              }}
+                              title="Delete immediately"
+                              className="p-1 rounded-md text-red-400 hover:text-white hover:bg-red-600/40 transition-all cursor-pointer"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        ) : (
+                          <span className="flex items-center opacity-0 group-hover:opacity-100 focus-within:opacity-100 shrink-0">
+                            <button
+                              aria-label={`Rename ${item.title}`}
+                              title="Rename conversation"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                const next = window.prompt('Rename conversation', item.title);
+                                if (next && next.trim() && next.trim() !== item.title) {
+                                  renameThread(String(item.id), next.trim());
+                                }
+                              }}
+                              className={`p-1 transition-colors cursor-pointer ${
+                                isLight
+                                  ? 'text-[#6b6a75] hover:text-[#09090b]'
+                                  : 'text-neutral-400 hover:text-white'
+                              }`}
+                            >
+                              <Pencil className="w-3 h-3" />
+                            </button>
+                            <button
+                              aria-label={`Delete ${item.title}`}
+                              title="Delete conversation"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                startDeletingThread(String(item.id));
+                              }}
+                              className={`p-1 transition-colors cursor-pointer ${
+                                isLight
+                                  ? 'text-[#6b6a75] hover:text-red-600'
+                                  : 'text-neutral-400 hover:text-red-400'
+                              }`}
+                            >
+                              <Trash2 className="w-3 h-3" />
+                            </button>
+                          </span>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )
+            ) : (
+              /* Grouped collapsible sections by agent */
+              <div className="space-y-2">
+                {agentGroups.map((group) => {
+                  const isCollapsed = Boolean(collapsedSections[group.agentId]);
+                  return (
+                    <div key={group.agentId} className="select-none">
+                      {/* Section Header */}
+                      <div
+                        onClick={() => toggleSectionCollapse(group.agentId)}
+                        className={`w-full flex items-center justify-between px-2 py-1.5 rounded-lg cursor-pointer transition-colors ${
+                          isLight ? 'hover:bg-neutral-100 text-[#18181b]' : 'hover:bg-white/5 text-neutral-300'
+                        }`}
+                      >
+                        <div className="flex items-center gap-1.5 truncate">
+                          {isCollapsed ? (
+                            <ChevronRight className="w-3.5 h-3.5 text-neutral-400 shrink-0" />
+                          ) : (
+                            <ChevronDown className="w-3.5 h-3.5 text-neutral-400 shrink-0" />
+                          )}
+                          <MediobotAvatar
+                            actor={{ type: 'mediobot', mediobotId: group.agentId, name: group.agentName }}
+                            size="xs"
+                          />
+                          <span className="text-[12px] font-semibold tracking-tight truncate">{group.agentName}</span>
+                          <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono ${
+                            isLight ? 'bg-neutral-200/80 text-neutral-600' : 'bg-neutral-800 text-neutral-400'
+                          }`}>
+                            {group.threads.length}
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          data-testid={`new-chat-${group.agentId}`}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (group.isMaestro) {
+                              createNewMainTeamChat();
+                            } else {
+                              createNewChat(group.agentId, activeTeamId);
+                            }
+                          }}
+                          title={`New ${group.agentName} chat`}
+                          className={`p-1 rounded transition-colors ${
+                            isLight ? 'hover:bg-neutral-200 text-neutral-500 hover:text-neutral-900' : 'hover:bg-white/10 text-neutral-400 hover:text-white'
+                          }`}
+                        >
+                          <SquarePen className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+
+                      {/* Section Threads */}
+                      {!isCollapsed && (
+                        <div className="mt-0.5 space-y-0.5 pl-2">
+                          {group.threads.length === 0 ? (
+                            <div className={`px-2 py-1 text-[11px] italic ${isLight ? 'text-neutral-400' : 'text-neutral-600'}`}>
+                              No conversations
+                            </div>
+                          ) : (
+                            group.threads.map((item) => {
+                              const isActive = item.id === activeThreadId;
+                              const isDeleting = deletingThreadIds.has(item.id);
+                              return (
+                                <div
+                                  key={item.id}
+                                  onClick={() => {
+                                    if (isDeleting) return;
+                                    openChatTab(item.id);
+                                  }}
+                                  className={`group relative w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-left text-xs transition-colors cursor-pointer ${
+                                    isActive
+                                      ? isLight
+                                        ? 'bg-neutral-200/80 font-medium text-neutral-900'
+                                        : 'bg-[#27272d] font-medium text-white shadow-2xs'
+                                      : isLight
+                                      ? 'hover:bg-neutral-100 text-neutral-700'
+                                      : 'hover:bg-[#1a1a1e] text-neutral-400 hover:text-neutral-200'
+                                  }`}
+                                >
+                                  <span className="truncate flex-1 pr-2 text-[12.5px]">{item.cleanTitle}</span>
+
+                                  {isDeleting ? (
+                                    <div className="flex items-center gap-1 shrink-0 z-10" onClick={(e) => e.stopPropagation()}>
+                                      <button
+                                        type="button"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          undoDeleteThread(String(item.id));
+                                        }}
+                                        title="Undo deletion"
+                                        className="shrink-0 flex items-center gap-1 px-2.5 py-0.5 rounded-lg bg-red-600 hover:bg-red-700 text-white text-[11px] font-semibold shadow-xs active:scale-95 transition-all cursor-pointer"
+                                      >
+                                        <RotateCcw className="w-3 h-3 stroke-[2.5]" />
+                                        <span>Undo</span>
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          confirmDeleteThread(String(item.id));
+                                        }}
+                                        title="Delete immediately"
+                                        className="p-1 rounded-md text-red-400 hover:text-white hover:bg-red-600/40 transition-all cursor-pointer"
+                                      >
+                                        <Trash2 className="w-3.5 h-3.5" />
+                                      </button>
+                                    </div>
+                                  ) : (
+                                    <span className="flex items-center opacity-0 group-hover:opacity-100 focus-within:opacity-100 shrink-0">
+                                      <button
+                                        aria-label={`Rename ${item.title}`}
+                                        title="Rename conversation"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          const next = window.prompt('Rename conversation', item.title);
+                                          if (next && next.trim() && next.trim() !== item.title) {
+                                            renameThread(String(item.id), next.trim());
+                                          }
+                                        }}
+                                        className={`p-1 transition-colors cursor-pointer ${
+                                          isLight
+                                            ? 'text-[#6b6a75] hover:text-[#09090b]'
+                                            : 'text-neutral-400 hover:text-white'
+                                        }`}
+                                      >
+                                        <Pencil className="w-3 h-3" />
+                                      </button>
+                                      <button
+                                        aria-label={`Delete ${item.title}`}
+                                        title="Delete conversation"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          startDeletingThread(String(item.id));
+                                        }}
+                                        className={`p-1 transition-colors cursor-pointer ${
+                                          isLight
+                                            ? 'text-[#6b6a75] hover:text-red-600'
+                                            : 'text-neutral-400 hover:text-red-400'
+                                        }`}
+                                      >
+                                        <Trash2 className="w-3 h-3" />
+                                      </button>
+                                    </span>
+                                  )}
+                                </div>
+                              );
+                            })
+                          )}
+                        </div>
                       )}
                     </div>
                   );
-                }}
-                theme={isLight ? 'light' : 'dark'}
-                frame={false}
-                animation="pop"
-                stagger={0.03}
-                showGradients={false}
-                radius={12}
-                gap={6}
-                width="100%"
-                maxHeight="100%"
-                className="w-full h-full"
-              />
+                })}
+              </div>
             )}
           </div>
         </div>
@@ -1204,24 +1581,33 @@ export const ThreadsDrawer: React.FC = () => {
               : 'bg-[#1c1c20] border-[#28282e] text-[#e5e5e7]'
           }`}
         >
-          {/* Fixed Header: Maestro title + avatar + count */}
-          <div className="flex items-center justify-between mb-2 shrink-0">
-            <div className="flex items-center gap-2">
-              {/* Maestro Avatar: Light white medium circle with two vertical black blinking eyes */}
-              <div className="w-[18px] h-[18px] rounded-full bg-[#f4f4f5] flex items-center justify-center gap-[2.5px] shrink-0 shadow-xs border border-neutral-300/40">
-                <span className="w-[3.2px] h-[7px] rounded-full bg-black animate-eye-blink block" />
-                <span className="w-[3.2px] h-[7px] rounded-full bg-black animate-eye-blink block" />
+          {/* Fixed Header: Maestro title + avatar + count + status */}
+          {(() => {
+            const maestroAgent = agents.find((a) => a.id === 'maestro') || { id: 'maestro', name: 'Maestro', status: 'idle', availability: 'available' };
+            const maestroStatus = getSpecialistStatus(maestroAgent);
+            return (
+              <div className="flex items-center justify-between mb-2 shrink-0">
+                <div className="flex items-center gap-2">
+                  {/* Maestro Avatar: Light white medium circle with two vertical black blinking eyes */}
+                  <div className="w-[18px] h-[18px] rounded-full bg-[#f4f4f5] flex items-center justify-center gap-[2.5px] shrink-0 shadow-xs border border-neutral-300/40">
+                    <span className="w-[3.2px] h-[7px] rounded-full bg-black animate-eye-blink block" />
+                    <span className="w-[3.2px] h-[7px] rounded-full bg-black animate-eye-blink block" />
+                  </div>
+                  <span className={`font-semibold text-[12px] tracking-tight ${isLight ? 'text-[#09090b]' : 'text-neutral-200'}`}>
+                    Maestro
+                  </span>
+                  <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-normal ${
+                    isLight ? 'bg-[#eaebee] text-[#4b5563]' : 'bg-[#27272d] text-neutral-400'
+                  }`}>
+                    {specialistAgents.length}
+                  </span>
+                </div>
+                <div title={maestroStatus.tooltip}>
+                  <SpecialistStatusIndicator status={maestroStatus.status} />
+                </div>
               </div>
-              <span className={`font-semibold text-[12px] tracking-tight ${isLight ? 'text-[#09090b]' : 'text-neutral-200'}`}>
-                Maestro
-              </span>
-              <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-normal ${
-                isLight ? 'bg-[#eaebee] text-[#4b5563]' : 'bg-[#27272d] text-neutral-400'
-              }`}>
-                {specialistAgents.length}
-              </span>
-            </div>
-          </div>
+            );
+          })()}
 
           {/* Horizontal separation line matching image */}
           <div className={`w-full h-1 rounded-full mb-2.5 shrink-0 ${
@@ -1235,14 +1621,16 @@ export const ThreadsDrawer: React.FC = () => {
             {specialistAgents.map((agent) => {
               const isWorking = agent.status === 'working';
               const avatar = getMediobotPresentation(agent.id, agent.name, agent.role);
+              const statusInfo = getSpecialistStatus(agent);
 
               return (
                 <button
                   key={agent.id}
                   onClick={() => selectAgent(agent.id)}
-                  title={`${agent.name} · ${agent.activityState ?? agent.status}${agent.currentTask ? `: ${agent.currentTask}` : ''}`}
+                  title={statusInfo.tooltip}
                   data-activity-state={agent.activityState ?? agent.status}
-                  className={`w-full group flex items-center py-2 px-2.5 rounded-xl transition-all duration-200 ease-[cubic-bezier(0.16,1,0.3,1)] text-left cursor-pointer ${
+                  data-agent-status={statusInfo.status}
+                  className={`w-full group flex items-center justify-between py-2 px-2.5 rounded-xl transition-all duration-200 ease-[cubic-bezier(0.16,1,0.3,1)] text-left cursor-pointer ${
                     isLight ? 'hover:bg-[#f1f2f5]' : 'hover:bg-[#32313a]'
                   }`}
                 >
@@ -1264,6 +1652,10 @@ export const ThreadsDrawer: React.FC = () => {
                     >
                       {agent.name}
                     </span>
+                  </div>
+
+                  <div className="shrink-0 ml-2" title={statusInfo.tooltip}>
+                    <SpecialistStatusIndicator status={statusInfo.status} />
                   </div>
                 </button>
               );

@@ -4,7 +4,7 @@ import { ChevronDown, ChevronRight, FileCode, Copy, Check } from 'lucide-react';
 import { useApp } from '../../state/AppContext';
 
 export const DiffViewer: React.FC<{ diff: FileDiff }> = ({ diff }) => {
-  const { theme } = useApp();
+  const { theme, openFileTab } = useApp();
   const isLight = theme === 'light';
   const [isExpanded, setIsExpanded] = useState(true);
   const [copied, setCopied] = useState(false);
@@ -38,8 +38,21 @@ export const DiffViewer: React.FC<{ diff: FileDiff }> = ({ diff }) => {
           ) : (
             <ChevronRight className={`w-3.5 h-3.5 ${isLight ? 'text-[#64748b]' : 'text-neutral-400'}`} />
           )}
-          <FileCode className={`w-3.5 h-3.5 ${isLight ? 'text-[#64748b]' : 'text-neutral-400'}`} />
-          <span className={`${isLight ? 'text-[#09090b]' : 'text-neutral-200'} font-medium truncate`}>{diff.filePath}</span>
+          <button
+            type="button"
+            data-testid={`diff-file-link-${diff.filePath.replace(/[/\\:.]/g, '-')}`}
+            onClick={(e) => {
+              e.stopPropagation();
+              if (typeof openFileTab === 'function') {
+                openFileTab(diff.filePath);
+              }
+            }}
+            className="flex items-center gap-1.5 hover:underline cursor-pointer group text-left"
+            title={`Click to open ${diff.filePath} in editor`}
+          >
+            <FileCode className={`w-3.5 h-3.5 ${isLight ? 'text-[#64748b]' : 'text-neutral-400'} group-hover:text-sky-500`} />
+            <span className={`${isLight ? 'text-[#09090b]' : 'text-neutral-200'} font-medium truncate group-hover:text-sky-500`}>{diff.filePath}</span>
+          </button>
         </div>
 
         <div className="flex items-center gap-2.5">

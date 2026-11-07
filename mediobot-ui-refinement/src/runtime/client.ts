@@ -84,11 +84,12 @@ export class MediobotRuntimeClient implements IMediobotRuntime {
     openTabs: Array<{ path: string; name: string }>,
     expandedPaths: string[],
     workbenchTabs?: import('./types').PersistedWorkbenchTab[],
-    activeWorkbenchTabId?: string | null
+    activeWorkbenchTabId?: string | null,
+    workspaceId?: string | null
   ): Promise<void> {
     await request("/api/workspace/ui-state", {
       method: "PUT",
-      body: JSON.stringify({ activeFile, openTabs, expandedPaths, workbenchTabs, activeWorkbenchTabId }),
+      body: JSON.stringify({ activeFile, openTabs, expandedPaths, workbenchTabs, activeWorkbenchTabId, workspaceId }),
     });
   }
 
@@ -331,9 +332,11 @@ export class MediobotRuntimeClient implements IMediobotRuntime {
     });
   }
 
-  async cancelTurn(threadId: string, turnId: string): Promise<void> {
-    const query = new URLSearchParams({ threadId });
-    await request(`/api/turns/${encodeURIComponent(turnId)}/cancel?${query}`, { method: "POST" });
+  setActiveThreadId(_id: string | null): void {}
+
+  async cancelTurn(threadId: string, turnId?: string, isExplicit?: boolean): Promise<void> {
+    const query = new URLSearchParams({ threadId, ...(isExplicit ? { isExplicit: 'true' } : {}) });
+    await request(`/api/turns/${encodeURIComponent(turnId || 'active')}/cancel?${query}`, { method: "POST" });
   }
 
   onEvent(listener: Listener): () => void {

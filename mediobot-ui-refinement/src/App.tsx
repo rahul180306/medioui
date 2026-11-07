@@ -14,6 +14,7 @@ import { SettingsView } from './features/settings/SettingsView';
 import { ProjectModal } from './features/projects/ProjectModal';
 import { LibraryView } from './features/library/LibraryView';
 import { TerminalWorkspaceView } from './features/terminal/TerminalWorkspaceView';
+import { PrototypeScenarioSelector } from './components/PrototypeScenarioSelector';
 
 // Keep CodeMirror and its language modes out of the initial Main Chat bundle.
 // The editor loads when the user opens a file tab.
@@ -91,6 +92,9 @@ const MainWorkspace: React.FC = () => {
 
       {/* Modals & Dialogs */}
       {activeModal === 'projects' && <ProjectModal />}
+
+      {/* Google AI Studio Prototype Scenario Switcher */}
+      <PrototypeScenarioSelector />
     </div>
   );
 };

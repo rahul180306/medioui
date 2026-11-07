@@ -20,11 +20,20 @@ import { RuntimeEvent, RuntimeTaskSummary, RuntimeSpecialistGroupHistory, Worksp
 import { ThreadTitleService } from '../services/titleService';
 import type { CatalogProviderItem } from '../types';
 import { mergeMonotonicToolData } from '../utils/monotonicMerge';
-import { MOCK_PROVIDERS, MOCK_CATALOG } from '../runtime/mockData';
+import { restoreWorkspaceTabs } from './workspaceTabs';
 import { buildAssignmentModelSelections, resolveTurnModelSelection } from './agentModelRouting';
 import { specialistActivityState, specialistAssignmentGoal, specialistTaskIdentity } from '../features/empty/specialistTaskActivity';
 import { mergeAgentTaskHistory } from './specialistTaskHistory';
 import { normalizeMediobotId } from '../features/mediobots/presentation';
+import { recruitSpecialistsForObjective } from '../features/mediobots/specialistRecruiter';
+
+declare module '../types' {
+  export interface Thread {
+    ownerAgent?: string;
+    threadType?: 'team' | 'mind';
+    assignedSpecialists?: string[];
+  }
+}
 
 function mergeIncomingItem(existing: ThreadItem, incoming: ThreadItem): ThreadItem {
   return {
@@ -32,6 +41,12 @@ function mergeIncomingItem(existing: ThreadItem, incoming: ThreadItem): ThreadIt
     ...incoming,
     ...(existing.tool || incoming.tool
       ? { tool: mergeMonotonicToolData(existing.tool, incoming.tool) }
+      : {}),
+    ...(existing.peerMessage || incoming.peerMessage
+      ? { peerMessage: { ...(existing.peerMessage ?? {}), ...(incoming.peerMessage ?? {}),
+          ...((incoming.peerMessage?.text ?? existing.peerMessage?.text)
+            ? { text: incoming.peerMessage?.text ?? existing.peerMessage?.text }
+            : {}) } as ThreadItem["peerMessage"] }
       : {}),
     timestamp: Math.min(existing.timestamp, incoming.timestamp),
     actor: incoming.actor ?? existing.actor,
@@ -55,12 +70,12 @@ const mapProviderConnection = (sp: any): ProviderConfig => ({
 });
 
 export const INITIAL_AGENTS: MedioBotAgent[] = [
-  { id: 'maestro', name: 'Maestro', group: 'orchestrator', role: 'Team orchestration', status: 'idle', directConversationAvailable: true },
-  { id: 'cody', definitionId: 'cody', directConversationAvailable: true, name: 'Cody', group: 'specialist', role: 'Software engineering', status: 'idle' },
-  { id: 'vision', definitionId: 'vision', directConversationAvailable: true, name: 'Vision', group: 'specialist', role: 'Browser and visual work', status: 'idle' },
-  { id: 'doc', definitionId: 'doc', directConversationAvailable: true, name: 'Doc', group: 'specialist', role: 'Documentation intelligence', status: 'idle' },
-  { id: 'research', definitionId: 'research', directConversationAvailable: true, name: 'Research', group: 'specialist', role: 'Web research', status: 'idle' },
-  { id: 'tester', definitionId: 'tester', directConversationAvailable: true, name: 'Tester', group: 'specialist', role: 'Independent verification', status: 'idle' },
+  { id: 'maestro', name: 'Maestro', group: 'orchestrator', role: 'Team orchestration', status: 'idle' },
+  { id: 'cody', definitionId: 'cody', directConversationAvailable: true, name: 'Cody', group: 'specialist', role: 'Software engineering', status: 'waiting', currentTask: 'development' },
+  { id: 'vision', name: 'Vision', group: 'specialist', role: 'Browser and visual work', status: 'idle' },
+  { id: 'doc', definitionId: 'doc', directConversationAvailable: true, name: 'Doc', group: 'specialist', role: 'Documentation intelligence', status: 'waiting', currentTask: 'unavailable' },
+  { id: 'research', definitionId: 'research', directConversationAvailable: true, name: 'Research', group: 'specialist', role: 'Web research', status: 'waiting', currentTask: 'unavailable' },
+  { id: 'tester', definitionId: 'tester', directConversationAvailable: true, name: 'Tester', group: 'specialist', role: 'Independent verification', status: 'waiting', currentTask: 'unavailable' },
 ];
 
 const mediobotSlug = (value: string): string => value.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
@@ -104,6 +119,7 @@ interface AgentTaskProjection {
   readonly activityState?: AgentActivityState;
   readonly currentTask?: string;
   readonly updatedAt: number;
+  readonly threadId?: string;
 }
 
 function mostRelevantAgentTask(tasks: ReadonlyMap<string, AgentTaskProjection>): AgentTaskProjection | undefined {
@@ -122,31 +138,31 @@ export interface AgentModelPreference {
 
 export const DEFAULT_AGENT_PREFERENCES: Record<string, AgentModelPreference> = {
   maestro: {
-    modelKey: 'gemini-3.6-flash',
+    modelKey: 'MiniMaxAI/MiniMax-M2.7',
     effort: 'Medium',
   },
   cody: {
-    modelKey: 'gemini-3.6-flash',
+    modelKey: 'MiniMaxAI/MiniMax-M2.7',
     effort: 'High',
   },
   vision: {
-    modelKey: 'gemini-3-flash-preview',
+    modelKey: 'google/diffusiongemma-26b-a4b-it',
     effort: 'Medium',
   },
   doc: {
-    modelKey: 'gemini-3.5-flash-lite',
+    modelKey: 'MiniMaxAI/MiniMax-M2.7',
     effort: 'Low',
   },
   research: {
-    modelKey: 'gemini-3.1-flash-lite',
+    modelKey: 'MiniMaxAI/MiniMax-M2.7',
     effort: 'High',
   },
   tester: {
-    modelKey: 'gemini-3.6-flash',
+    modelKey: 'MiniMaxAI/MiniMax-M2.7',
     effort: 'Extra',
   },
   deployer: {
-    modelKey: 'gemini-3.5-flash-lite',
+    modelKey: 'MiniMaxAI/MiniMax-M2.7',
     effort: 'Medium',
   },
 };
@@ -187,6 +203,7 @@ interface AppContextType {
   isSidebarOpen: boolean;
   sidebarTab: 'home' | 'history' | 'maestro';
   openedFolderName: string | null;
+  runtimeFailures: Record<string, string>;
   workspaceStatus: WorkspaceStatus;
   workspaceSession: WorkspaceSession | null;
   treeVersion: number;
@@ -233,11 +250,11 @@ interface AppContextType {
   agentGroupHistory: RuntimeSpecialistGroupHistory[];
   agentGroupHistoryUnavailable: boolean;
   selectedMediobotId: string | null;
-  selectedAgent: MedioBotAgent | null;
   agentPreferences: Record<string, AgentModelPreference>;
   setAgentModelPreference: (agentId: string, modelKey: string) => void;
   setAgentEffortPreference: (agentId: string, effort: string) => void;
   getAgentPreference: (agentId: string) => AgentModelPreference;
+  getThreadAgentStatus: (threadId: string, agentId: string) => AgentStatus;
 
   // Actions
   signIn: (name: string, email: string) => void;
@@ -276,13 +293,18 @@ interface AppContextType {
   connectProvider: (provider: Record<string, unknown>) => Promise<void>;
   addCustomProvider: (provider: Record<string, unknown>) => Promise<void>;
   disconnectProvider: (providerId: string) => void;
-  createNewChat: () => void;
+  activeTeamId: string | null;
+  setActiveTeamId: (teamId: string | null) => void;
+  createNewTeam: () => void;
+  createNewMainTeamChat: () => void;
+  createNewChat: (targetSpecialistId?: string | null, targetTeamId?: string | null) => void;
+  recruitSpecialist: (threadId: string, specialistIds: string[]) => void;
   deleteThread: (id: string) => void;
   renameThread: (id: string, newTitle: string) => void;
   regenerateThreadTitle: (id: string) => void;
   syncRenamedEntry: (oldPath: string, newPath: string, isFolder: boolean) => void;
   syncDeletedEntry: (deletedPath: string, isFolder: boolean) => void;
-  sendPrompt: (text: string, attachments?: import('../types').TurnAttachment[], modelSelection?: ThreadModelSelection, reasoningEffort?: string) => Promise<void>;
+  sendPrompt: (text: string, attachments?: import('../types').TurnAttachment[], modelSelection?: ThreadModelSelection, reasoningEffort?: string, targetThreadId?: string | null) => Promise<void>;
   respondApproval: (turnId: string, approvalId: string, approved: boolean) => Promise<void>;
   cancelCurrentTurn: () => Promise<void>;
 }
@@ -296,7 +318,7 @@ export const isSpecialistChatTab = (tab: WorkbenchTab, threadsList?: Thread[]): 
   if (!tab || tab.kind !== 'chat') return false;
   if (threadsList && tab.threadId) {
     const matched = threadsList.find((th) => th.id === tab.threadId);
-    if (matched?.specialistId) return true;
+    if (matched) return Boolean(matched.specialistId);
   }
   const title = (tab.title || '').trim().toLowerCase();
   return (
@@ -308,6 +330,7 @@ export const isSpecialistChatTab = (tab: WorkbenchTab, threadsList?: Thread[]): 
     title.startsWith('research') ||
     title.startsWith('tester') ||
     title.startsWith('deployer') ||
+    title.startsWith('scraapy') ||
     title.startsWith('definition-')
   );
 };
@@ -381,6 +404,24 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [treeVersion, setTreeVersion] = useState<number>(0);
   const [lastFsEvent, setLastFsEvent] = useState<WorkspaceWatchEvent | null>(null);
 
+  const [activeTeamId, setActiveTeamIdState] = useState<string | null>(() => {
+    try {
+      const saved = localStorage.getItem('mediobot_active_team_id');
+      if (saved) return saved;
+    } catch {}
+    const initial = runtimeInstance.getInitialThreads();
+    const teamThread = (initial || []).find((t) => t.teamId || t.threadType === 'team' || t.ownerAgent === 'maestro');
+    return teamThread?.teamId || teamThread?.id || null;
+  });
+
+  const setActiveTeamId = useCallback((teamId: string | null) => {
+    setActiveTeamIdState(teamId);
+    try {
+      if (teamId) localStorage.setItem('mediobot_active_team_id', teamId);
+      else localStorage.removeItem('mediobot_active_team_id');
+    } catch {}
+  }, []);
+
   const reloadThreads = useCallback(async () => {
     try {
       setChatHydrationStatus('LOADING');
@@ -443,6 +484,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (a.type !== b.type) return false;
     if (a.type === 'home' && b.type === 'home') return true;
     if (a.type === 'library' && b.type === 'library') return true;
+    if (a.type === 'terminal' && b.type === 'terminal') return true;
     if (a.type === 'thread' && b.type === 'thread') return a.threadId === b.threadId;
     if (a.type === 'settings' && b.type === 'settings') return a.tab === b.tab;
     return false;
@@ -478,71 +520,26 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const isTerminalView = currentLoc.type === 'terminal';
   const settingsTab = currentLoc.type === 'settings' ? currentLoc.tab : 'general';
 
-  // Canonical Workbench Tabs state (only files and main chat; never specialist/Mediobot side chats)
-  const [workbenchTabs, setWorkbenchTabs] = useState<WorkbenchTab[]>(() => {
-    try {
-      const saved = localStorage.getItem('mediobot_workbench_tabs');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed)) {
-          const seen = new Set<string>();
-          return parsed.filter((t) => {
-            if (!t || !t.id) return false;
-            if (isSpecialistChatTab(t)) return false;
-            const key =
-              t.kind === 'file'
-                ? `file:${normalizeFilePath(t.path || t.id.replace(/^file:/, ''))}`
-                : `chat:${t.threadId || t.id.replace(/^chat:/, '')}`;
-            if (seen.has(key)) return false;
-            seen.add(key);
-            return true;
-          });
-        }
-      }
-    } catch {
-      // ignore
-    }
-    return [];
-  });
-  const [activeWorkbenchTabId, setActiveWorkbenchTabIdState] = useState<string | null>(() => {
-    try {
-      return localStorage.getItem('mediobot_active_workbench_tab_id') || null;
-    } catch {
-      return null;
-    }
-  });
-
-  // Sanitize workbenchTabs: ensure no specialist side-chat thread tabs linger in workbenchTabs
-  useEffect(() => {
-    setWorkbenchTabs((prev) => {
-      const sanitized = prev.filter((tab) => !isSpecialistChatTab(tab, threads));
-      if (sanitized.length !== prev.length) {
-        return sanitized;
-      }
-      return prev;
+  // Canonical Workbench Tabs state
+  // SQLite owns project tabs. Unscoped browser caches must never reopen files
+  // against a different backend root (including after another window switches it).
+  const [workbenchTabs, setWorkbenchTabs] = useState<WorkbenchTab[]>([]);
+  const [activeWorkbenchTabId, setActiveWorkbenchTabIdState] = useState<string | null>(null);
+  const [tabWorkspaceId, setTabWorkspaceId] = useState<string | null>(null);
+  const tabWorkspaceIdRef = useRef<string | null>(null);
+  const workspaceSwitching = useRef(false);
+  const workspaceEventId = useRef<string | null>(null);
+  const [runtimeFailures, setRuntimeFailures] = useState<Record<string, string>>({});
+  const reportRuntimeFailure = useCallback((component: string, failed: boolean) => {
+    setRuntimeFailures(previous => {
+      if (Boolean(previous[component]) === failed) return previous;
+      const next = { ...previous };
+      if (failed) next[component] = `${component} is unavailable. Retry the operation or reload the local application.`;
+      else delete next[component];
+      return next;
     });
-  }, [threads]);
-
-  useEffect(() => {
-    try {
-      const cleanTabs = workbenchTabs.filter((tab) => !isSpecialistChatTab(tab, threads));
-      localStorage.setItem('mediobot_workbench_tabs', JSON.stringify(cleanTabs));
-    } catch {
-      // ignore
-    }
-  }, [workbenchTabs, threads]);
-
-  useEffect(() => {
-    try {
-      if (activeWorkbenchTabId) {
-        localStorage.setItem('mediobot_active_workbench_tab_id', activeWorkbenchTabId);
-      } else {
-        localStorage.removeItem('mediobot_active_workbench_tab_id');
-      }
-    } catch {
-      // ignore
-    }
-  }, [activeWorkbenchTabId]);
+    if (failed) console.warn(JSON.stringify({ event: 'runtime.operation.failed', component }));
+  }, []);
 
   // Per-chat draft isolation
   const [drafts, setDrafts] = useState<Record<string, string>>({});
@@ -555,6 +552,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (!activeWorkbenchTabId) return null;
     return workbenchTabs.find((t) => t.id === activeWorkbenchTabId) || null;
   }, [workbenchTabs, activeWorkbenchTabId]);
+
 
   // Backward-compatible projections
   const openTabs = useMemo(() => {
@@ -773,7 +771,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }, []);
 
   const setActiveWorkbenchTabId = useCallback((id: string | null) => {
-    setSelectedMediobotId(null);
+    if (id && id.startsWith('chat:')) {
+      const targetThreadId = id.replace(/^chat:/, '');
+      const thread = threads.find((t) => t.id === targetThreadId);
+      if (thread?.specialistId) {
+        setSelectedMediobotId(thread.specialistId);
+      } else {
+        setSelectedMediobotId(null);
+      }
+    } else {
+      setSelectedMediobotId(null);
+    }
     setActiveWorkbenchTabIdState(id);
     try {
       if (id) {
@@ -785,7 +793,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       // ignore
     }
     // Also immediately sync to runtime uiState so refresh preserves it instantly
-    if (workspaceStatus === 'OPEN' && workspaceSession) {
+    if (workspaceStatus === 'OPEN' && workspaceSession && tabWorkspaceIdRef.current === workspaceSession.workspaceId) {
       const activeTab = workbenchTabs.find((t) => isTabMatch(t, id));
       const activePath = activeTab?.kind === 'file' ? activeTab.path : null;
       void runtimeInstance.saveUIState(
@@ -797,8 +805,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             ? { id: t.id, kind: 'file' as const, path: t.path, name: t.name }
             : { id: t.id, kind: 'chat' as const, threadId: t.threadId, title: t.title }
         ),
-        id
-      );
+        id, workspaceSession.workspaceId
+      ).catch(() => reportRuntimeFailure('Workspace tabs', true));
     }
     if (!id) {
       pushLocation({ type: 'home' });
@@ -876,19 +884,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const openChatTab = useCallback((threadId: string) => {
     const thread = threads.find((t) => t.id === threadId);
-    if (thread?.specialistId) {
-      // Dedicated Mediobot side chat: DO NOT create a top workbench tab!
-      setSelectedMediobotId(thread.specialistId);
-      setActiveWorkbenchTabIdState(null);
-      setWorkbenchTabs((prev) => prev.filter((t) => !(t.kind === 'chat' && t.threadId === threadId)));
-      pushLocation({ type: 'thread', threadId });
-      if (isSettingsView) {
-        closeSettings();
-      }
-      return;
+    const owner = thread ? (thread.ownerAgent || (thread as any).owner_agent || thread.specialistId) : null;
+    const cleanOwner = owner ? normalizeMediobotId(owner) : null;
+    if (cleanOwner && cleanOwner !== 'maestro') {
+      setSelectedMediobotId(cleanOwner);
+    } else {
+      setSelectedMediobotId(null);
     }
-
-    setSelectedMediobotId(null);
     const tabId = `chat:${threadId}`;
 
     // 1. If tab for this thread is already opened, switch directly to it
@@ -908,13 +910,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return;
     }
 
-    // 2. Only open the tab if it is not already opened and is not a specialist chat
+    // 2. Only open the tab if it is not already opened
     setWorkbenchTabs((prev) => {
       if (prev.some((t) => t.kind === 'chat' && (t.id === tabId || t.threadId === threadId))) {
         return prev;
       }
+      const thread = threads.find((t) => t.id === threadId);
       return [...prev, { id: tabId, kind: 'chat', threadId, title: thread?.title || 'New chat' }];
     });
+
+    const threadObj = threads.find((t) => t.id === threadId);
+    if (threadObj?.teamId && threadObj.teamId !== activeTeamId) {
+      setActiveTeamId(threadObj.teamId);
+    }
 
     setActiveWorkbenchTabIdState(tabId);
     try {
@@ -1031,6 +1039,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     ]).then(([wsRes, threadsRes, provRes, catalogRes, definitionsRes]) => {
       if (!mounted) return;
 
+      for (const [component, result] of [['Workspace', wsRes], ['Conversations', threadsRes], ['Providers', provRes], ['Provider catalog', catalogRes], ['Specialist registry', definitionsRes]] as const) {
+        reportRuntimeFailure(component, result.status === 'rejected');
+      }
       if (provRes.status === 'fulfilled' && Array.isArray(provRes.value)) {
         setProviders(provRes.value.map(mapProviderConnection));
       }
@@ -1055,19 +1066,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         }
         setActiveTurnsByThread(runningMap);
       } else {
-        console.warn('Backend threads unavailable, using local threads state:', threadsRes.reason);
-        let fallbackThreads: Thread[] = [];
-        try {
-          const localSaved = localStorage.getItem('mediobot_mock_threads');
-          if (localSaved) {
-            const parsed = JSON.parse(localSaved);
-            if (Array.isArray(parsed) && parsed.length > 0) fallbackThreads = parsed;
-          }
-        } catch {
-          // ignore
-        }
-        setThreads(deduplicateThreads(fallbackThreads));
-        setChatHydrationStatus('READY');
+        reportRuntimeFailure('Conversations', true);
+        setChatHydrationStatus('ERROR');
       }
 
       const ws = wsRes.status === 'fulfilled' ? wsRes.value : { status: 'EMPTY' as WorkspaceStatus, session: null, uiState: null };
@@ -1076,100 +1076,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setWorkspaceSession(ws.session);
         setOpenedFolderName(ws.session.displayName);
 
-        // Hydrate workbench tabs from SQLite uiState
-        let restoredTabs: WorkbenchTab[] = [];
-        if (ws.uiState?.workbenchTabs && Array.isArray(ws.uiState.workbenchTabs) && ws.uiState.workbenchTabs.length > 0) {
-          restoredTabs = ws.uiState.workbenchTabs
-            .map((t) => {
-              if (t.kind === 'file' && t.path) {
-                return {
-                  id: t.id || `file:${t.path}`,
-                  kind: 'file' as const,
-                  path: t.path,
-                  name: t.name || t.path.split('/').pop() || t.path,
-                };
-              }
-              if (t.kind === 'chat' && t.threadId) {
-                const thread = loadedThreads.find((th) => th.id === t.threadId);
-                return {
-                  id: t.id || `chat:${t.threadId}`,
-                  kind: 'chat' as const,
-                  threadId: t.threadId,
-                  title: thread?.title || t.title || 'New chat',
-                };
-              }
-              return null;
-            })
-            .filter((t): t is WorkbenchTab => t !== null)
-            .filter((t) => !isSpecialistChatTab(t, loadedThreads));
-        } else if (ws.uiState?.openTabs && Array.isArray(ws.uiState.openTabs)) {
-          restoredTabs = ws.uiState.openTabs.map((t) => ({
-            id: `file:${t.path}`,
-            kind: 'file' as const,
-            path: t.path,
-            name: t.name,
-          }));
-        }
-        // Prioritize localStorage tabs (which have user's latest opened tabs & exact order)
-        let finalTabs: WorkbenchTab[] = [];
-        const savedTabsJson = (() => {
-          try {
-            return localStorage.getItem('mediobot_workbench_tabs');
-          } catch {
-            return null;
-          }
-        })();
-        if (savedTabsJson) {
-          try {
-            const parsedSaved = JSON.parse(savedTabsJson);
-            if (Array.isArray(parsedSaved) && parsedSaved.length > 0) {
-              finalTabs = parsedSaved.filter((t) => t && t.id && !isSpecialistChatTab(t, loadedThreads));
-            }
-          } catch {
-            // ignore
-          }
-        }
-        if (finalTabs.length === 0) {
-          finalTabs = restoredTabs;
-        } else {
-          // Merge in any tabs from workspace that might be missing
-          restoredTabs.forEach((rt) => {
-            if (!finalTabs.some((ft) => isTabMatch(ft, rt.id))) {
-              finalTabs.push(rt);
-            }
-          });
-        }
-        finalTabs = finalTabs.filter((t) => !isSpecialistChatTab(t, loadedThreads));
-        setWorkbenchTabs(finalTabs);
-
-        const savedActiveTabId = (() => {
-          try {
-            return localStorage.getItem('mediobot_active_workbench_tab_id');
-          } catch {
-            return null;
-          }
-        })();
-
-        const resolvedTab = (savedActiveTabId && finalTabs.find((t) => isTabMatch(t, savedActiveTabId)))
-          || (ws.uiState?.activeWorkbenchTabId && finalTabs.find((t) => isTabMatch(t, ws.uiState.activeWorkbenchTabId)))
-          || (ws.uiState?.activeFile && finalTabs.find((t) => isTabMatch(t, `file:${ws.uiState.activeFile}`)))
-          || (finalTabs.length > 0 ? finalTabs[0] : null);
-
-        if (resolvedTab) {
-          setActiveWorkbenchTabIdState(resolvedTab.id);
-          try {
-            localStorage.setItem('mediobot_active_workbench_tab_id', resolvedTab.id);
-          } catch {
-            // ignore
-          }
-          if (resolvedTab.kind === 'chat') {
-            setNavHistory([{ type: 'home' }, { type: 'thread', threadId: resolvedTab.threadId }]);
-            setNavIndex(1);
-          } else {
-            setNavHistory([{ type: 'home' }]);
-            setNavIndex(0);
-          }
-        }
+        const { tabs, activeId } = restoreWorkspaceTabs(ws.uiState, loadedThreads, ws.session.workspaceId);
+        tabWorkspaceIdRef.current = ws.session.workspaceId;
+        setTabWorkspaceId(ws.session.workspaceId);
+        setWorkbenchTabs(tabs);
+        setActiveWorkbenchTabIdState(activeId);
+        const active = tabs.find(tab => tab.id === activeId);
+        setNavHistory(active?.kind === 'chat' ? [{ type: 'home' }, { type: 'thread', threadId: active.threadId }] : [{ type: 'home' }]);
+        setNavIndex(active?.kind === 'chat' ? 1 : 0);
       } else if (ws.status === 'UNAVAILABLE' && ws.session) {
         setWorkspaceSession(ws.session);
         setOpenedFolderName(ws.session.displayName);
@@ -1181,16 +1095,43 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
     }).catch(() => {
       if (!mounted) return;
+      reportRuntimeFailure('Startup', true);
       setChatHydrationStatus('ERROR');
     });
 
     const unsubscribe = runtimeInstance.onWorkspaceEvent((event) => {
       if (!mounted) return;
       if (event.type === 'state' && event.state) {
+        workspaceEventId.current = event.state.session?.workspaceId ?? null;
         setWorkspaceStatus(event.state.status);
         setWorkspaceSession(event.state.session);
         if (event.state.status === 'OPEN' && event.state.session) {
           setOpenedFolderName(event.state.session.displayName);
+        }
+        if (!workspaceSwitching.current && (event.state.session?.workspaceId ?? null) !== tabWorkspaceIdRef.current) {
+          const workspaceId = event.state.session?.workspaceId ?? null;
+          tabWorkspaceIdRef.current = null;
+          setTabWorkspaceId(null);
+          setWorkbenchTabs([]);
+          setActiveWorkbenchTabIdState(null);
+          setThreads([]);
+          setNavHistory([{ type: 'home' }]);
+          setNavIndex(0);
+          setChatHydrationStatus('LOADING');
+          void Promise.all([runtimeInstance.getWorkspace(), runtimeInstance.loadThreads(workspaceId)]).then(([workspace, loaded]) => {
+            if (!mounted || workspaceEventId.current !== workspaceId || workspaceSwitching.current) return;
+            const restored = workspaceId ? restoreWorkspaceTabs(workspace.uiState, loaded, workspaceId) : { tabs: [], activeId: null };
+            tabWorkspaceIdRef.current = workspaceId;
+            setTabWorkspaceId(workspaceId);
+            setWorkbenchTabs(restored.tabs);
+            setActiveWorkbenchTabIdState(restored.activeId);
+            setThreads(deduplicateThreads(loaded));
+            setChatHydrationStatus('READY');
+          }).catch(() => {
+            if (!mounted || workspaceEventId.current !== workspaceId) return;
+            reportRuntimeFailure('Workspace', true);
+            setChatHydrationStatus('ERROR');
+          });
         }
         setTreeVersion((v) => v + 1);
       } else if (event.type === 'fs' && event.fsEvents) {
@@ -1211,6 +1152,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }, []);
 
   const openProjectDirectory = useCallback(async (preferredPath?: string) => {
+    if (workspaceSwitching.current) return;
+    workspaceSwitching.current = true;
     try {
       // 1. Persist current workspace state before switching
       if (workspaceStatus === 'OPEN' && workspaceSession) {
@@ -1226,10 +1169,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 ? { id: t.id, kind: 'file' as const, path: t.path, name: t.name }
                 : { id: t.id, kind: 'chat' as const, threadId: t.threadId, title: t.title }
             ),
-            activeWorkbenchTabId
+            activeWorkbenchTabId, workspaceSession.workspaceId
           );
         } catch (e) {
-          console.warn('Failed to persist previous workspace UI state before switch:', e);
+          reportRuntimeFailure('Workspace tabs', true);
+          return; // Keep the project and unsaved state intact if persistence fails.
         }
       }
 
@@ -1242,82 +1186,53 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const session = result.session;
       const uiState = result.uiState;
 
-      // 2. Clear any custom tree & wipe previous threads immediately
+      // Backend ownership changed; stale tabs cannot render under the new root.
+      setWorkspaceSession(session);
+      setOpenedFolderName(session.displayName);
+      tabWorkspaceIdRef.current = null;
+      setTabWorkspaceId(null);
+      setWorkbenchTabs([]);
+      setActiveWorkbenchTabIdState(null);
       setCustomProjectTree(null);
       setThreads([]);
       setChatHydrationStatus('LOADING');
 
-      // 3. ATOMIC SWITCH: Clean wipe old tabs first and load new workspace tabs
-      let newTabs: WorkbenchTab[] = [];
-      if (uiState?.workbenchTabs && Array.isArray(uiState.workbenchTabs) && uiState.workbenchTabs.length > 0) {
-        newTabs = uiState.workbenchTabs
-          .map((t) => {
-            if (t.kind === 'file' && t.path) {
-              return { id: t.id || `file:${t.path}`, kind: 'file' as const, path: t.path, name: t.name || t.path.split('/').pop() || t.path };
-            }
-            if (t.kind === 'chat' && t.threadId) {
-              return { id: t.id || `chat:${t.threadId}`, kind: 'chat' as const, threadId: t.threadId, title: t.title || 'New chat' };
-            }
-            return null;
-          })
-          .filter((t): t is WorkbenchTab => t !== null);
-      } else if (uiState?.openTabs && Array.isArray(uiState.openTabs)) {
-        newTabs = uiState.openTabs.map((t) => ({
-          id: `file:${t.path}`,
-          kind: 'file' as const,
-          path: t.path,
-          name: t.name,
-        }));
-      }
+      const loaded = await runtimeInstance.loadThreads(session.workspaceId);
+      const { tabs: newTabs, activeId } = restoreWorkspaceTabs(uiState, loaded, session.workspaceId);
+      tabWorkspaceIdRef.current = session.workspaceId;
+      setTabWorkspaceId(session.workspaceId);
       setWorkbenchTabs(newTabs);
-
-      const savedActiveTabId = (() => {
-        try {
-          return localStorage.getItem('mediobot_active_workbench_tab_id');
-        } catch {
-          return null;
-        }
-      })();
-
-      const targetId = (savedActiveTabId && newTabs.some((t) => isTabMatch(t, savedActiveTabId)))
-        ? savedActiveTabId
-        : (uiState?.activeWorkbenchTabId || (uiState?.activeFile ? `file:${uiState.activeFile}` : null));
-      const resolvedTab = newTabs.find((t) => isTabMatch(t, targetId)) || (newTabs.length > 0 ? newTabs[0] : null);
-      setActiveWorkbenchTabIdState(resolvedTab?.id ?? null);
-      if (resolvedTab?.kind === 'chat') {
-        pushLocation({ type: 'thread', threadId: resolvedTab.threadId });
-      } else {
-        pushLocation({ type: 'home' });
-      }
-
+      setActiveWorkbenchTabIdState(activeId);
+      const active = newTabs.find(tab => tab.id === activeId);
+      setNavHistory(active?.kind === 'chat' ? [{ type: 'home' }, { type: 'thread', threadId: active.threadId }] : [{ type: 'home' }]);
+      setNavIndex(active?.kind === 'chat' ? 1 : 0);
       setOpenedFolderName(session.displayName);
       setWorkspaceSession(session);
       setWorkspaceStatus('OPEN');
-      setTreeVersion((v) => v + 1);
-
-      // 4. Reload threads for this workspace strictly
-      try {
-        const loaded = await runtimeInstance.loadThreads(session.workspaceId);
-        setThreads(deduplicateThreads(loaded));
-        setChatHydrationStatus('READY');
-      } catch (err) {
-        console.error('Failed to reload workspace threads:', err);
-        setChatHydrationStatus('ERROR');
-      }
+      setTreeVersion(v => v + 1);
+      setThreads(deduplicateThreads(loaded));
+      setChatHydrationStatus('READY');
+      reportRuntimeFailure('Open folder', false);
 
       if (currentLoc.type === 'settings' || currentLoc.type === 'library') {
         pushLocation({ type: 'home' });
       }
       return session;
     } catch (error) {
-      console.error('Failed to open project directory:', error);
-      setWorkspaceStatus((prev) => (workspaceSession ? 'OPEN' : 'EMPTY'));
+      reportRuntimeFailure('Open folder', true);
+      // The backend may already have switched: never claim the stale root is open.
+      setWorkspaceStatus('UNAVAILABLE');
+    } finally {
+      workspaceSwitching.current = false;
     }
   }, [workspaceSession, workspaceStatus, workbenchTabs, openTabs, activeWorkbenchTabId, currentLoc, pushLocation, isTabMatch]);
 
   const closeWorkspace = useCallback(async () => {
     try {
+      workspaceSwitching.current = true;
       await runtimeInstance.closeWorkspace();
+      tabWorkspaceIdRef.current = null;
+      setTabWorkspaceId(null);
       setWorkspaceSession(null);
       setWorkspaceStatus('EMPTY');
       setOpenedFolderName(null);
@@ -1332,12 +1247,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setThreads(deduplicateThreads(loaded));
         setChatHydrationStatus('READY');
       } catch {
-        setChatHydrationStatus('READY');
+        reportRuntimeFailure('Conversations', true);
+        setChatHydrationStatus('ERROR');
       }
     } catch (error) {
-      console.error('Failed to close workspace:', error);
+      reportRuntimeFailure('Workspace', true);
+    } finally {
+      workspaceSwitching.current = false;
     }
-  }, []);
+  }, [reportRuntimeFailure]);
   
   // MedioBot Agents state 
   const [agents, setAgents] = useState<MedioBotAgent[]>(INITIAL_AGENTS);
@@ -1353,51 +1271,43 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const agentTaskProjectionWorkspace = useRef<string | null>(null);
 
   const selectAgent = useCallback((agentId: string | null) => {
-    const cleanAgentId = agentId ? normalizeMediobotId(agentId) : null;
-    setSelectedMediobotId(cleanAgentId);
-    try {
-      if (cleanAgentId) {
-        localStorage.setItem('mediobot_selected_mediobot_id', cleanAgentId);
-      } else {
-        localStorage.removeItem('mediobot_selected_mediobot_id');
-      }
-    } catch {
-      // ignore
-    }
-
-    if (!cleanAgentId) {
-      const mainThread = threads.find((t) => !t.specialistId);
-      if (mainThread) {
-        const tabId = `chat:${mainThread.id}`;
-        setActiveWorkbenchTabIdState(tabId);
-        setWorkbenchTabs((prev) =>
-          prev.some((t) => t.id === tabId)
-            ? prev
-            : [...prev, { id: tabId, kind: 'chat' as const, threadId: mainThread.id, title: mainThread.title }]
-        );
-        pushLocation({ type: 'thread', threadId: mainThread.id });
-      } else {
-        setActiveWorkbenchTabIdState(null);
-        pushLocation({ type: 'home' });
-      }
+    setSelectedMediobotId(agentId);
+    if (activeWorkbenchTab?.kind === 'chat') {
       return;
     }
-
-    // Dedicated Agent direct chat & mind workspace (Maestro or specialists): Resume ongoing conversation if exists
-    const existingSpecialistThread = threads.find(
-      (t) => t.specialistId && normalizeMediobotId(t.specialistId) === cleanAgentId
-    );
-
-    if (existingSpecialistThread) {
-      // Dedicated Agent side chat & mind workspace (Maestro or specialists): DO NOT create or add a top workbench tab!
-      setWorkbenchTabs((prev) => prev.filter((t) => !(t.kind === 'chat' && t.threadId === existingSpecialistThread.id)));
-      setActiveWorkbenchTabIdState(null);
-      pushLocation({ type: 'thread', threadId: existingSpecialistThread.id });
+    if (agentId) {
+      const cleanId = normalizeMediobotId(agentId);
+      if (cleanId === 'maestro') {
+        setSelectedMediobotId(null);
+        const maestroThread = threads.find(
+          (t) => (t.teamId === activeTeamId || !activeTeamId) && (t.ownerAgent === 'maestro' || (!t.ownerAgent && (!t.specialistId || normalizeMediobotId(t.specialistId) === 'maestro')))
+        ) || threads.find(
+          (t) => (t.ownerAgent === 'maestro' || (!t.ownerAgent && (!t.specialistId || normalizeMediobotId(t.specialistId) === 'maestro')))
+        );
+        if (maestroThread) {
+          openChatTab(maestroThread.id);
+        }
+        return;
+      }
+      const existingSpecialistThread = threads.find(
+        (t) => (t.teamId === activeTeamId || !activeTeamId) && ((t.ownerAgent === cleanId) || (t.specialistId && normalizeMediobotId(t.specialistId) === cleanId))
+      );
+      if (existingSpecialistThread) {
+        openChatTab(existingSpecialistThread.id);
+      } else {
+        createNewChat(cleanId, activeTeamId);
+      }
     } else {
-      setActiveWorkbenchTabIdState(null);
-      pushLocation({ type: 'home' });
+      const maestroThread = threads.find(
+        (t) => (t.teamId === activeTeamId || !activeTeamId) && (t.ownerAgent === 'maestro' || (!t.ownerAgent && (!t.specialistId || normalizeMediobotId(t.specialistId) === 'maestro')))
+      ) || threads.find(
+        (t) => (t.ownerAgent === 'maestro' || (!t.ownerAgent && (!t.specialistId || normalizeMediobotId(t.specialistId) === 'maestro')))
+      );
+      if (maestroThread) {
+        openChatTab(maestroThread.id);
+      }
     }
-  }, [threads, pushLocation]);
+  }, [threads, openChatTab, activeWorkbenchTab, activeTeamId]);
 
   useEffect(() => {
     if (!agentRegistryLoaded || !selectedMediobotId || agents.some(agent => agent.id === selectedMediobotId)) return;
@@ -1406,19 +1316,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     else if (agents.length) setSelectedMediobotId(null);
   }, [agentRegistryLoaded, agents, selectedMediobotId]);
 
-  const selectedAgent = useMemo(() => {
-    if (!selectedMediobotId) return null;
-    const cleanId = normalizeMediobotId(selectedMediobotId);
-    return (
-      agents.find(
-        (agent) =>
-          normalizeMediobotId(agent.id) === cleanId ||
-          (agent.preferenceId && normalizeMediobotId(agent.preferenceId) === cleanId) ||
-          agent.definitionId === selectedMediobotId
-      ) ?? null
-    );
-  }, [selectedMediobotId, agents]);
-
   const updateAgentStatus = useCallback((agentId: string, status: AgentStatus, currentTask?: string) => {
     setAgents((prev) =>
       prev.map((a) => (a.id === agentId ? { ...a, status, ...(currentTask !== undefined ? { currentTask } : {}) } : a))
@@ -1426,7 +1323,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }, []);
 
   const updateAgentTaskStatus = useCallback((agentId: string, taskId: string, status: AgentStatus,
-    currentTask: string | undefined, updatedAt: number, activityState?: AgentActivityState) => {
+    currentTask: string | undefined, updatedAt: number, activityState?: AgentActivityState, threadId?: string) => {
     const workspaceId = workspaceSession?.workspaceId ?? null;
     if (agentTaskProjectionWorkspace.current !== workspaceId) {
       agentTaskProjections.current.clear();
@@ -1440,6 +1337,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       ...(activityState ? { activityState } : previous?.activityState ? { activityState: previous.activityState } : {}),
       ...(taskLabel !== undefined ? { currentTask: taskLabel.slice(0, 180) } : {}),
       updatedAt,
+      threadId: threadId ?? previous?.threadId,
     });
     if (tasks.size > 100) {
       const terminal = [...tasks.entries()].filter(([, projection]) => projection.status !== 'working' && projection.status !== 'waiting')
@@ -1452,6 +1350,44 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       ? { ...agent, status: projection.status, currentTask: projection.currentTask,
         ...(projection.activityState ? { activityState: projection.activityState } : {}) } : agent));
   }, [workspaceSession?.workspaceId]);
+
+  const getThreadAgentStatus = useCallback((threadId: string, agentId: string): AgentStatus => {
+    // 1. Check thread-scoped task projections
+    const agentTasks = agentTaskProjections.current.get(agentId);
+    if (agentTasks) {
+      const threadProjections = new Map(
+        [...agentTasks.entries()].filter(([, p]) => p.threadId === threadId)
+      );
+      const proj = mostRelevantAgentTask(threadProjections);
+      if (proj && (proj.status === 'working' || proj.status === 'waiting')) return proj.status;
+    }
+    // 2. Check thread-scoped agentTaskHistory
+    const threadTasks = agentTaskHistoryRef.current.filter((t) => (t as any).threadId === threadId);
+    for (const task of threadTasks) {
+      if (
+        (task.assignedMediobot?.id === agentId || mediobotSlug(task.assignedMediobot?.name ?? '') === agentId) &&
+        (task.state === 'running' || task.events?.some((e) => e.type === 'tool.started'))
+      ) {
+        return 'working';
+      }
+    }
+    // 3. Check turns of the thread
+    const thread = threads.find((t) => t.id === threadId);
+    if (thread?.turns) {
+      const runningTurn = thread.turns.find((t) => t.status === 'running' || t.status === 'pause_requested');
+      if (runningTurn?.items) {
+        for (const item of runningTurn.items) {
+          if (
+            (item.type === 'tool_execution' && item.tool?.status === 'running' && item.actor?.type === 'mediobot' && item.actor.mediobotId === agentId) ||
+            (item.type === 'activity' && item.activityLabel?.toLowerCase().includes(agentId.toLowerCase()) && runningTurn.status === 'running')
+          ) {
+            return 'working';
+          }
+        }
+      }
+    }
+    return 'idle';
+  }, [threads]);
 
   const refreshAgentAssignments = useCallback(async () => {
     const defaults = (agent: MedioBotAgent): MedioBotAgent => ({
@@ -1575,28 +1511,25 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }, []);
 
   // AI Providers & Models configuration state
-  const [providers, setProviders] = useState<ProviderConfig[]>(() => {
-    return MOCK_PROVIDERS;
-  });
-  const [providerCatalog, setProviderCatalog] = useState<CatalogProviderItem[]>(() => {
-    return MOCK_CATALOG;
-  });
+  const [providers, setProviders] = useState<ProviderConfig[]>([]);
+  const [providerCatalog, setProviderCatalog] = useState<CatalogProviderItem[]>([]);
   const refreshProviders = useCallback(async () => {
-    try {
-      const [serverProviders, definitions] = await Promise.all([
-        runtimeInstance.getConnectedProviders(), runtimeInstance.getDefinitions(),
-      ]);
-      if (Array.isArray(serverProviders)) {
-        setProviders(serverProviders.map(mapProviderConnection));
-      }
-      if (definitions) setAgentRegistryLoaded(true);
-      if (definitions && definitions.length > 0) {
-        setAgents(mapMediobotDefinitions(definitions));
-      }
-    } catch {
-      // Keep initial mock providers intact
+    const [serverProviders, definitions] = await Promise.allSettled([
+      runtimeInstance.getConnectedProviders(), runtimeInstance.getDefinitions(),
+    ]);
+    reportRuntimeFailure('Providers', serverProviders.status === 'rejected');
+    reportRuntimeFailure('Specialist registry', definitions.status === 'rejected');
+    if (serverProviders.status === 'fulfilled' && Array.isArray(serverProviders.value)) {
+      setProviders(serverProviders.value.map(mapProviderConnection));
+    } else {
+      // Keep names/selections visible, but never present cached connectivity as current.
+      setProviders(previous => previous.map(provider => ({ ...provider, connected: false })));
     }
-  }, []);
+    if (definitions.status === 'fulfilled') {
+      setAgentRegistryLoaded(true);
+      setAgents(mapMediobotDefinitions(definitions.value));
+    }
+  }, [reportRuntimeFailure]);
 
   useEffect(() => {
     void refreshProviders();
@@ -1665,8 +1598,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       );
       return selected?.name ?? `Unavailable model · ${modelSelection.modelId}`;
     }
-    if (activeThread?.model && activeThread.model !== 'No configured model') return activeThread.model;
-    return 'Auto';
+    if (activeThread?.model) return activeThread.model;
+    return 'No configured model';
   }, [activeThread?.model, modelSelection, enabledModels]);
 
   const setModel = useCallback((newModel: ModelOption, explicitSelection?: import('../types').ThreadModelSelection) => {
@@ -1821,14 +1754,27 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return activeProject.id ? [activeProject] : [];
   }, [activeProject]);
 
-  const createNewChat = useCallback(() => {
-    setSelectedMediobotId(null);
+  const createNewChat = useCallback((targetSpecialistId?: string | null, targetTeamId?: string | null) => {
+    // A new chat is always a unified team session unless explicitly targeting a specialist
+    const cleanSpec = targetSpecialistId ? normalizeMediobotId(targetSpecialistId) : null;
+    const isSpecialist = Boolean(cleanSpec && cleanSpec !== 'maestro');
 
-    // Deduplication check: if current active tab is already an untouched blank new chat, keep focus on it
+    if (isSpecialist && cleanSpec) {
+      setSelectedMediobotId(cleanSpec);
+    } else {
+      setSelectedMediobotId(null);
+    }
+
+    const effectiveTeamId = targetTeamId !== undefined
+      ? targetTeamId
+      : (activeTeamId || null);
+
+    // Deduplication check: if current active tab is already an untouched blank new chat for this same specialist/maestro, keep focus on it
     if (activeWorkbenchTab?.kind === 'chat') {
       const curThread = threads.find((t) => t.id === activeWorkbenchTab.threadId);
       const curDraft = drafts[activeWorkbenchTab.threadId] ?? '';
-      if (curThread && curThread.turns.length === 0 && !curDraft.trim()) {
+      const curSpec = curThread?.specialistId ? normalizeMediobotId(curThread.specialistId) : null;
+      if (curThread && curThread.turns.length === 0 && !curDraft.trim() && curSpec === (isSpecialist ? cleanSpec : null) && (curThread.teamId === effectiveTeamId || !effectiveTeamId)) {
         pushLocation({ type: 'thread', threadId: curThread.id });
         return;
       }
@@ -1836,13 +1782,39 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     const uniqueSuffix = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID().slice(0, 8) : Math.random().toString(36).slice(2, 8);
     const threadId = `thread-${Date.now()}-${uniqueSuffix}`;
+
+    const specAgent = isSpecialist && cleanSpec
+      ? agents.find((a) => normalizeMediobotId(a.id) === cleanSpec || normalizeMediobotId(a.preferenceId) === cleanSpec)
+      : undefined;
+    const specTitle = isSpecialist ? `${specAgent?.name ?? 'Specialist'} · New chat` : 'New chat';
+
+    // Resolve the model this fresh thread should start on.
+    const firstEnabledModel = enabledModels[0];
+    const effectiveDefaultSelection: ThreadModelSelection | undefined = draftModelSelection
+      ?? (firstEnabledModel
+        ? { providerConnectionId: firstEnabledModel.providerId, modelId: firstEnabledModel.id }
+        : undefined);
+    const defaultModelName = effectiveDefaultSelection
+      ? enabledModels.find(
+          (candidate) => candidate.providerId === effectiveDefaultSelection.providerConnectionId
+            && candidate.id === effectiveDefaultSelection.modelId,
+        )?.name ?? effectiveDefaultSelection.modelId
+      : 'No configured model';
+
     const newThread: Thread = {
       id: threadId,
-      title: 'New chat',
+      teamId: effectiveTeamId ?? (isSpecialist ? undefined : threadId),
+      title: specTitle,
       projectId: activeProjectId || '',
+      ownerAgent: isSpecialist && cleanSpec ? cleanSpec : 'maestro',
+      threadType: isSpecialist ? 'mind' : 'team',
+      ...(isSpecialist && cleanSpec ? { specialistId: cleanSpec, assignedSpecialists: [cleanSpec] } : { assignedSpecialists: [] }),
+      mode: isSpecialist ? 'standalone_specialist' : 'connected_main',
+      agentScope: isSpecialist && cleanSpec ? cleanSpec : 'maestro',
       createdAt: Date.now(),
       updatedAt: Date.now(),
-      model: 'Auto',
+      model: defaultModelName,
+      ...(effectiveDefaultSelection ? { modelSelection: effectiveDefaultSelection } : {}),
       branch: activeBranch,
       approvalMode,
       turns: [],
@@ -1858,7 +1830,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       id: `chat:${threadId}`,
       kind: 'chat',
       threadId,
-      title: 'New chat',
+      title: specTitle,
     };
 
     setWorkbenchTabs((prev) => {
@@ -1866,8 +1838,133 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return [...prev, newTab];
     });
     setActiveWorkbenchTabIdState(newTab.id);
+    try {
+      localStorage.setItem('mediobot_active_workbench_tab_id', newTab.id);
+    } catch {}
     pushLocation({ type: 'thread', threadId });
-  }, [activeWorkbenchTab, threads, drafts, activeProjectId, activeBranch, approvalMode, pushLocation]);
+  }, [activeWorkbenchTab, threads, drafts, activeProjectId, activeBranch, approvalMode, pushLocation, enabledModels, draftModelSelection, selectedMediobotId, agents, activeTeamId]);
+
+  const createNewTeam = useCallback(() => {
+    const uniqueSuffix = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID().slice(0, 8) : Math.random().toString(36).slice(2, 8);
+    const newTeamId = `team-${Date.now()}-${uniqueSuffix}`;
+    const mainThreadId = `thread-${Date.now()}-${uniqueSuffix}`;
+
+    const firstEnabledModel = enabledModels[0];
+    const effectiveDefaultSelection: ThreadModelSelection | undefined = draftModelSelection
+      ?? (firstEnabledModel
+        ? { providerConnectionId: firstEnabledModel.providerId, modelId: firstEnabledModel.id }
+        : undefined);
+    const defaultModelName = effectiveDefaultSelection
+      ? enabledModels.find(
+          (candidate) => candidate.providerId === effectiveDefaultSelection.providerConnectionId
+            && candidate.id === effectiveDefaultSelection.modelId,
+        )?.name ?? effectiveDefaultSelection.modelId
+      : 'No configured model';
+
+    const newMainThread: Thread = {
+      id: mainThreadId,
+      teamId: newTeamId,
+      title: 'New chat',
+      projectId: activeProjectId || '',
+      ownerAgent: 'maestro',
+      threadType: 'team',
+      assignedSpecialists: [],
+      mode: 'connected_main',
+      agentScope: 'maestro',
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      model: defaultModelName,
+      ...(effectiveDefaultSelection ? { modelSelection: effectiveDefaultSelection } : {}),
+      branch: activeBranch,
+      approvalMode,
+      turns: [],
+    };
+
+    setActiveTeamId(newTeamId);
+    setSelectedMediobotId(null);
+    void runtimeInstance.saveThread(newMainThread).catch(() => {});
+    setThreads((prev) => [newMainThread, ...prev.filter((t) => t.id !== newMainThread.id)]);
+
+    const newTab: WorkbenchTab = {
+      id: `chat:${mainThreadId}`,
+      kind: 'chat',
+      threadId: mainThreadId,
+      title: 'New chat',
+    };
+    setWorkbenchTabs((prev) => [newTab, ...prev.filter((t) => t.id !== newTab.id)]);
+    setActiveWorkbenchTabIdState(newTab.id);
+    try {
+      localStorage.setItem('mediobot_active_workbench_tab_id', newTab.id);
+    } catch {}
+    pushLocation({ type: 'thread', threadId: mainThreadId });
+  }, [activeProjectId, activeBranch, approvalMode, enabledModels, draftModelSelection, pushLocation, setActiveTeamId]);
+
+  const createNewMainTeamChat = useCallback(() => {
+    const currentTeamId = activeTeamId || (activeThread?.teamId ?? activeThread?.id ?? `team-${Date.now()}`);
+    const uniqueSuffix = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID().slice(0, 8) : Math.random().toString(36).slice(2, 8);
+    const mainThreadId = `thread-${Date.now()}-${uniqueSuffix}`;
+
+    const firstEnabledModel = enabledModels[0];
+    const effectiveDefaultSelection: ThreadModelSelection | undefined = draftModelSelection
+      ?? (firstEnabledModel
+        ? { providerConnectionId: firstEnabledModel.providerId, modelId: firstEnabledModel.id }
+        : undefined);
+    const defaultModelName = effectiveDefaultSelection
+      ? enabledModels.find(
+          (candidate) => candidate.providerId === effectiveDefaultSelection.providerConnectionId
+            && candidate.id === effectiveDefaultSelection.modelId,
+        )?.name ?? effectiveDefaultSelection.modelId
+      : 'No configured model';
+
+    const newMainThread: Thread = {
+      id: mainThreadId,
+      teamId: currentTeamId,
+      title: 'New chat',
+      projectId: activeProjectId || '',
+      ownerAgent: 'maestro',
+      threadType: 'team',
+      assignedSpecialists: [],
+      mode: 'connected_main',
+      agentScope: 'maestro',
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      model: defaultModelName,
+      ...(effectiveDefaultSelection ? { modelSelection: effectiveDefaultSelection } : {}),
+      branch: activeBranch,
+      approvalMode,
+      turns: [],
+    };
+
+    setActiveTeamId(currentTeamId);
+    setSelectedMediobotId(null);
+    void runtimeInstance.saveThread(newMainThread).catch(() => {});
+    setThreads((prev) => [newMainThread, ...prev.filter((t) => t.id !== newMainThread.id)]);
+
+    const newTab: WorkbenchTab = {
+      id: `chat:${mainThreadId}`,
+      kind: 'chat',
+      threadId: mainThreadId,
+      title: 'New chat',
+    };
+    setWorkbenchTabs((prev) => [newTab, ...prev.filter((t) => t.id !== newTab.id)]);
+    setActiveWorkbenchTabIdState(newTab.id);
+    try {
+      localStorage.setItem('mediobot_active_workbench_tab_id', newTab.id);
+    } catch {}
+    pushLocation({ type: 'thread', threadId: mainThreadId });
+  }, [activeTeamId, activeThread, activeProjectId, activeBranch, approvalMode, enabledModels, draftModelSelection, pushLocation, setActiveTeamId]);
+
+  const recruitSpecialist = useCallback((targetThreadId: string, specialistIds: string[]) => {
+    setThreads((prev) =>
+      prev.map((t) => {
+        if (t.id !== targetThreadId) return t;
+        const merged = Array.from(new Set([...(t.assignedSpecialists ?? []), ...specialistIds]));
+        const updated = { ...t, assignedSpecialists: merged, updatedAt: Date.now() };
+        void runtimeInstance.saveThread(updated).catch(() => {});
+        return updated;
+      })
+    );
+  }, []);
 
   const setActiveProjectId = useCallback((_id: string) => {
     // Single workspace session is canonical
@@ -1875,6 +1972,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const handleSetActiveThreadId = useCallback((id: string | null) => {
     setSelectedMediobotId(null);
+    runtimeInstance.setActiveThreadId?.(id);
     if (id) {
       openChatTab(id);
     } else {
@@ -1885,7 +1983,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Auto-save UI state to SQLite when tabs or active file change in an OPEN workspace
   useEffect(() => {
-    if (workspaceStatus !== 'OPEN' || !workspaceSession) return;
+    if (workspaceStatus !== 'OPEN' || !workspaceSession || tabWorkspaceId !== workspaceSession.workspaceId) return;
     const timer = setTimeout(() => {
       const persistedTabs = workbenchTabs.map((t) =>
         t.kind === 'file'
@@ -1897,11 +1995,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         openTabs,
         [],
         persistedTabs,
-        activeWorkbenchTabId
-      );
+        activeWorkbenchTabId, workspaceSession.workspaceId
+      ).catch(() => reportRuntimeFailure('Workspace tabs', true));
     }, 300);
     return () => clearTimeout(timer);
-  }, [workspaceStatus, workspaceSession, activeTabPath, openTabs, workbenchTabs, activeWorkbenchTabId]);
+  }, [workspaceStatus, workspaceSession, tabWorkspaceId, activeTabPath, openTabs, workbenchTabs, activeWorkbenchTabId, reportRuntimeFailure]);
 
   // Active running turn tracker
   const activeTurnId = activeThreadId ? activeTurnsByThread[activeThreadId] ?? null : null;
@@ -2022,7 +2120,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         const activityState = specialistActivityState({ type: event.type, occurredAt: event.timestamp,
           activityState: event.payload.activityState, toolName: eventTool?.toolName });
         if (status && activityTaskId) updateAgentTaskStatus(eventAgentId, activityTaskId, status,
-          event.type === 'worker.assigned' ? event.payload.message : undefined, event.timestamp, activityState);
+          event.type === 'worker.assigned' ? event.payload.message : undefined, event.timestamp, activityState, event.threadId);
         else if (status) {
           updateAgentStatus(eventAgentId, status, event.type === 'worker.assigned' ? event.payload.message : undefined);
           if (activityState) setAgents(previous => previous.map(agent => agent.id === eventAgentId ? { ...agent, activityState } : agent));
@@ -2065,8 +2163,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               : event.type === 'approval.required' ? 'waiting_approval'
               : event.type === 'worker.assigned' || event.type === 'worker.started' ? 'running' : existing?.state ?? 'running';
             const nextTask = {
-              ...(existing ?? { id: activityTaskId, goal: specialistAssignmentGoal(event.payload.message) ?? 'Specialist assignment',
+              ...(existing ?? { id: activityTaskId, threadId: event.threadId, goal: specialistAssignmentGoal(event.payload.message) ?? 'Specialist assignment',
                 assignedMediobot: { id: event.workerDefinitionId ?? eventAgentId, name: agentName } }),
+              threadId: event.threadId ?? existing?.threadId,
               state: lifecycleState,
               events: [...priorEvents, eventRecord].sort((a, b) => a.occurredAt - b.occurredAt).slice(-30),
             };
@@ -2154,6 +2253,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 break;
 
               case 'agent.progress':
+              case 'agent.peer_message':
                 if (event.payload.activityState) {
                   nextTurn.currentActivity = event.payload.activityState;
                 }
@@ -2366,35 +2466,28 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }, []);
 
   const sendPrompt = useCallback(
-    async (text: string, attachments: import('../types').TurnAttachment[] = [], selectedModelSelection?: ThreadModelSelection, reasoningEffort?: string) => {
+    async (
+      text: string,
+      attachments: import('../types').TurnAttachment[] = [],
+      selectedModelSelection?: ThreadModelSelection,
+      reasoningEffort?: string,
+      targetThreadId?: string | null
+    ) => {
       const trimmed = text.trim();
-      let threadId = activeThreadId;
-      const cleanSelectedMediobotId = selectedMediobotId ? normalizeMediobotId(selectedMediobotId) : null;
-      const activeSpecialistAgent = cleanSelectedMediobotId
-        ? (agents.find(
-            (agent) =>
-              normalizeMediobotId(agent.id) === cleanSelectedMediobotId ||
-              (agent.preferenceId && normalizeMediobotId(agent.preferenceId) === cleanSelectedMediobotId) ||
-              agent.definitionId === selectedMediobotId
-          ) ?? selectedAgent)
-        : null;
-      const rawSpecialist = selectedMediobotId
-        ? (activeSpecialistAgent?.id ?? cleanSelectedMediobotId ?? selectedMediobotId)
-        : (activeSpecialistAgent?.directConversationAvailable ? (activeSpecialistAgent.id ?? activeSpecialistAgent.definitionId) : undefined);
-      const specialistId = rawSpecialist ? normalizeMediobotId(rawSpecialist) : undefined;
-      const specialistPreferenceId = specialistId ? (activeSpecialistAgent?.preferenceId ?? specialistId) : undefined;
+      let threadId = targetThreadId !== undefined ? targetThreadId : activeThreadId;
+      const selectedAgent = selectedMediobotId ? agents.find((agent) => agent.id === selectedMediobotId) : undefined;
+      const specialistId = selectedAgent?.directConversationAvailable
+        ? (selectedAgent.definitionId ?? selectedAgent.id) : undefined;
 
-      // Ensure specialist chats stay isolated to their dedicated thread
-      if (specialistId) {
-        const currentThread = threadId ? threads.find((t) => t.id === threadId) : null;
-        if (!currentThread || !currentThread.specialistId || normalizeMediobotId(currentThread.specialistId) !== specialistId) {
-          const existingSpecialistThread = threads.find(
-            (t) => t.specialistId && normalizeMediobotId(t.specialistId) === specialistId
-          );
-          threadId = existingSpecialistThread ? existingSpecialistThread.id : null;
-        }
-      }
+      // Lock turn to activeThreadId without threadId wiping
+      const existingThread = threadId ? threads.find((t) => t.id === threadId) : undefined;
+      const threadOwner = existingThread ? (existingThread.ownerAgent || (existingThread as any).owner_agent || existingThread.specialistId) : undefined;
+      const cleanOwner = threadOwner ? normalizeMediobotId(threadOwner) : undefined;
+      const effectiveSpecialistId = (cleanOwner && cleanOwner !== 'maestro')
+        ? cleanOwner
+        : (specialistId ? normalizeMediobotId(specialistId) : undefined);
 
+      const specialistPreferenceId = effectiveSpecialistId ? (selectedAgent?.preferenceId ?? selectedAgent?.id ?? effectiveSpecialistId) : undefined;
       const requestedModelSelection = resolveTurnModelSelection(selectedModelSelection, modelSelection, specialistPreferenceId, agentPreferences);
       const rawEffort = (
         reasoningEffort
@@ -2411,12 +2504,105 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             ...(validEffort ? { reasoningEffort: validEffort } : {}),
           }
         : undefined;
-      const assignmentModelSelections = specialistId ? undefined : buildAssignmentModelSelections(
+      const assignmentModelSelections = effectiveSpecialistId ? undefined : buildAssignmentModelSelections(
         agentPreferences,
         agents.filter((agent) => agent.group === 'specialist' && agent.id !== 'maestro')
           .map((agent) => ({ preferenceId: agent.preferenceId ?? agent.id, definitionId: agent.definitionId ?? agent.id })),
       );
       if (!trimmed || (threadId && activeTurnsByThread[threadId])) return;
+
+      // Dynamic Specialist Recruitment: Analyze requirements to assemble team
+      let recruitedSpecialists: string[] = [];
+      if (!effectiveSpecialistId) {
+        try {
+          recruitedSpecialists = recruitSpecialistsForObjective(
+            trimmed,
+            agents.filter((a) => a.group === 'specialist')
+          );
+        } catch {
+          // fallback if recruitment fails
+        }
+      } else {
+        recruitedSpecialists = [effectiveSpecialistId];
+      }
+
+      // If in empty state or isolated thread needed, spawn a new thread with automated concise title based on prompt
+      if (!threadId) {
+        const rawTitle = ThreadTitleService.generateTitle(trimmed);
+        const isSpec = Boolean(effectiveSpecialistId && effectiveSpecialistId !== 'maestro');
+        const specAgent = isSpec
+          ? agents.find((a) => normalizeMediobotId(a.id) === effectiveSpecialistId || normalizeMediobotId(a.preferenceId) === effectiveSpecialistId)
+          : undefined;
+        const newTitle = isSpec ? `${specAgent?.name ?? 'Specialist'} · ${rawTitle}` : rawTitle;
+        const uniqueSuffix = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID().slice(0, 8) : Math.random().toString(36).slice(2, 8);
+        threadId = `thread-${Date.now()}-${uniqueSuffix}`;
+        const newThread: Thread = {
+          id: threadId,
+          title: newTitle,
+          projectId: activeProjectId,
+          ownerAgent: isSpec && effectiveSpecialistId ? effectiveSpecialistId : 'maestro',
+          threadType: isSpec ? 'mind' : 'team',
+          ...(isSpec && effectiveSpecialistId ? { specialistId: effectiveSpecialistId } : {}),
+          mode: isSpec ? 'standalone_specialist' : 'connected_main',
+          agentScope: isSpec && effectiveSpecialistId ? effectiveSpecialistId : 'maestro',
+          assignedSpecialists: recruitedSpecialists,
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+          model: effectiveModelSelection
+            ? enabledModels.find((entry) => entry.providerId === effectiveModelSelection.providerConnectionId && entry.id === effectiveModelSelection.modelId)?.name ?? model
+            : model,
+          modelSelection: effectiveModelSelection,
+          ...(validEffort ? { reasoningEffort: validEffort } : {}),
+          branch: activeBranch,
+          approvalMode,
+          turns: [],
+        };
+
+        setThreads((prev) => {
+          if (prev.some((t) => t.id === newThread.id)) return prev;
+          return [newThread, ...prev];
+        });
+        void runtimeInstance.saveThread(newThread).catch(() => {});
+        const newTab: WorkbenchTab = {
+          id: `chat:${threadId}`,
+          kind: 'chat',
+          threadId,
+          title: newTitle,
+        };
+        setWorkbenchTabs((prev) => {
+          if (prev.some((t) => t.id === newTab.id)) return prev;
+          return [...prev, newTab];
+        });
+        setActiveWorkbenchTabIdState(newTab.id);
+        pushLocation({ type: 'thread', threadId });
+      } else {
+        const existingThread = threads.find((t) => t.id === threadId);
+        if (recruitedSpecialists.length > 0) {
+          setThreads((prev) =>
+            prev.map((t) => {
+              if (t.id !== threadId) return t;
+              const merged = Array.from(new Set([...(t.assignedSpecialists ?? []), ...recruitedSpecialists]));
+              const updated = { ...t, assignedSpecialists: merged, updatedAt: Date.now() };
+              void runtimeInstance.saveThread(updated).catch(() => {});
+              return updated;
+            })
+          );
+        }
+        if (existingThread && (existingThread.turns.length === 0 || existingThread.title === 'New chat' || existingThread.title.endsWith('· New chat'))) {
+          const rawTitle = ThreadTitleService.generateTitle(trimmed);
+          const generatedTitle = specialistId ? `${selectedAgent?.name ?? 'Specialist'} · ${rawTitle}` : rawTitle;
+          setThreads((prev) =>
+            prev.map((t) => (t.id === threadId ? { ...t, title: generatedTitle, updatedAt: Date.now() } : t))
+          );
+          setWorkbenchTabs((prev) =>
+            prev.map((tab) => (tab.kind === 'chat' && tab.threadId === threadId ? { ...tab, title: generatedTitle } : tab))
+          );
+          void runtimeInstance.renameThread(threadId, generatedTitle).catch(() => {});
+        }
+      }
+
+      setDraft(threadId, '');
+      setDraft('home', '');
 
       // Create new turn with unique ID
       const turnId = `turn-${typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : Date.now()}`;
@@ -2432,7 +2618,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
       const newTurn: Turn = {
         id: turnId,
-        threadId: threadId || '',
+        threadId,
         prompt: trimmed,
         status: 'running',
         currentActivity: 'thinking',
@@ -2440,89 +2626,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         items: [userItem],
       };
 
-      // If in empty state, spawn a new thread with automated concise title based on prompt
-      if (!threadId) {
-        const cleanSpecName = specialistId
-          ? (activeSpecialistAgent?.name || (specialistId.charAt(0).toUpperCase() + specialistId.slice(1)))
-          : '';
-        const newTitle = specialistId
-          ? `${cleanSpecName}: ${ThreadTitleService.generateTitle(trimmed)}`
-          : ThreadTitleService.generateTitle(trimmed);
-        const uniqueSuffix = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID().slice(0, 8) : Math.random().toString(36).slice(2, 8);
-        threadId = `thread-${Date.now()}-${uniqueSuffix}`;
-        newTurn.threadId = threadId;
-
-        const newThread: Thread = {
-          id: threadId,
-          title: newTitle,
-          projectId: activeProjectId,
-          ...(specialistId ? { specialistId } : {}),
-          createdAt: Date.now(),
-          updatedAt: Date.now(),
-          model: effectiveModelSelection
-            ? enabledModels.find((entry) => entry.providerId === effectiveModelSelection.providerConnectionId && entry.id === effectiveModelSelection.modelId)?.name ?? model
-            : model,
-          modelSelection: effectiveModelSelection,
-          ...(validEffort ? { reasoningEffort: validEffort } : {}),
-          branch: activeBranch,
-          approvalMode,
-          turns: [newTurn],
-        };
-
-        setThreads((prev) => {
-          if (prev.some((t) => t.id === newThread.id)) return prev;
-          return [newThread, ...prev];
-        });
-        void runtimeInstance.saveThread(newThread).catch(() => {});
-        // Only Main Chat (threads without specialistId) should create a workbench tab at the top!
-        if (!specialistId) {
-          const newTab: WorkbenchTab = {
-            id: `chat:${threadId}`,
-            kind: 'chat',
-            threadId,
-            title: newTitle,
+      // Optimistically project in local UI - server remains authoritative transcript writer
+      setThreads((prev) =>
+        prev.map((t) => {
+          if (t.id !== threadId) return t;
+          return {
+            ...t,
+            updatedAt: Date.now(),
+            turns: [...t.turns, newTurn],
+            ...(validEffort ? { reasoningEffort: validEffort } : {}),
+            ...(effectiveModelSelection ? { modelSelection: effectiveModelSelection } : {}),
           };
-          setWorkbenchTabs((prev) => {
-            if (prev.some((t) => t.id === newTab.id)) return prev;
-            return [...prev, newTab];
-          });
-          setActiveWorkbenchTabIdState(newTab.id);
-        } else {
-          // Dedicated side chat with a Mediobot: do not create top workbench tab!
-          setWorkbenchTabs((prev) => prev.filter((t) => !(t.kind === 'chat' && t.threadId === threadId)));
-          setActiveWorkbenchTabIdState(null);
-        }
-        pushLocation({ type: 'thread', threadId });
-      } else {
-        const existingThread = threads.find((t) => t.id === threadId);
-        if (existingThread && (existingThread.turns.length === 0 || existingThread.title === 'New chat')) {
-          const generatedTitle = ThreadTitleService.generateTitle(trimmed);
-          setThreads((prev) =>
-            prev.map((t) => (t.id === threadId ? { ...t, title: generatedTitle, updatedAt: Date.now() } : t))
-          );
-          setWorkbenchTabs((prev) =>
-            prev.map((tab) => (tab.kind === 'chat' && tab.threadId === threadId ? { ...tab, title: generatedTitle } : tab))
-          );
-          void runtimeInstance.renameThread(threadId, generatedTitle).catch(() => {});
-        }
+        })
+      );
 
-        // Optimistically project in local UI for existing thread
-        setThreads((prev) =>
-          prev.map((t) => {
-            if (t.id !== threadId) return t;
-            return {
-              ...t,
-              updatedAt: Date.now(),
-              turns: [...t.turns, newTurn],
-              ...(validEffort ? { reasoningEffort: validEffort } : {}),
-              ...(effectiveModelSelection ? { modelSelection: effectiveModelSelection } : {}),
-            };
-          })
-        );
-      }
-
-      setDraft(threadId, '');
-      setDraft('home', '');
       setActiveTurnsByThread((prev) => ({ ...prev, [threadId]: turnId }));
 
       try {
@@ -2531,7 +2648,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           modelSelection: effectiveModelSelection ?? requestedModelSelection,
           ...(validEffort ? { reasoningEffort: validEffort } : {}),
           ...(assignmentModelSelections && Object.keys(assignmentModelSelections).length ? { assignmentModelSelections } : {}),
-          ...(specialistId ? { specialistId } : {}),
+          ...(effectiveSpecialistId ? { specialistId: effectiveSpecialistId } : {}),
           approvalMode,
           project: activeProject,
           branch: activeBranch,
@@ -2544,21 +2661,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
         try {
           const freshThread = await runtimeInstance.loadThread?.(threadId);
-          if (freshThread && freshThread.turns && freshThread.turns.length > 0) {
-            setThreads((prev) =>
-              prev.map((t) => {
-                if (t.id !== threadId) return t;
-                const freshTurn = freshThread.turns.find((x) => x.id === turnId);
-                const existingTurn = t.turns.find((x) => x.id === turnId);
-                if (existingTurn && freshTurn && existingTurn.items.length > freshTurn.items.length) {
-                  return {
-                    ...freshThread,
-                    turns: freshThread.turns.map((x) => (x.id === turnId ? existingTurn : x)),
-                  };
+          if (freshThread) {
+            setThreads((prev) => prev.map((t) => {
+              if (t.id !== threadId) return t;
+              const mergedTurns = freshThread.turns.map((fTurn) => {
+                const localTurn = t.turns.find((lt) => lt.id === fTurn.id);
+                if (localTurn && (localTurn.items.length > fTurn.items.length || localTurn.status === 'running')) {
+                  return { ...fTurn, items: localTurn.items, status: localTurn.status };
                 }
-                return freshThread;
-              })
-            );
+                return fTurn;
+              });
+              return { ...freshThread, turns: mergedTurns };
+            }));
             const latestTurn = freshThread.turns.find((t) => t.id === turnId);
             if (latestTurn && ['completed', 'failed', 'cancelled'].includes(latestTurn.status)) {
               setActiveTurnsByThread((prev) => {
@@ -2608,7 +2722,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       model,
       modelSelection,
       selectedMediobotId,
-      selectedAgent,
       agents,
       enabledModels,
       agentPreferences,
@@ -2659,9 +2772,27 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const cancelTurn = useCallback(async (threadId: string, turnId?: string) => {
     const targetTurnId = turnId ?? activeTurnsByThread[threadId];
     if (targetTurnId) {
-      await runtimeInstance.cancelTurn(threadId, targetTurnId);
-      // Keep the turn active until its durable terminal event arrives. The API
-      // acknowledges an abort request, not completed worker/tool settlement.
+      try {
+        await runtimeInstance.cancelTurn(threadId, targetTurnId, true);
+        // Keep the turn active until its durable terminal event arrives. The API
+        // acknowledges an abort request, not completed worker/tool settlement.
+      } catch (error) {
+        // If cancellation fails (e.g. 409 Conflict if already settled), verify thread status
+        try {
+          const freshThread = await runtimeInstance.loadThread?.(threadId);
+          const turn = freshThread?.turns.find((t) => t.id === targetTurnId);
+          if (turn && ['completed', 'failed', 'cancelled'].includes(turn.status)) {
+            setActiveTurnsByThread((prev) => {
+              if (prev[threadId] === targetTurnId) {
+                const next = { ...prev };
+                delete next[threadId];
+                return next;
+              }
+              return prev;
+            });
+          }
+        } catch { /* ignore */ }
+      }
     }
   }, [activeTurnsByThread]);
 
@@ -2691,6 +2822,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         isSidebarOpen,
         sidebarTab,
         openedFolderName,
+        runtimeFailures,
         workspaceStatus,
         workspaceSession,
         treeVersion,
@@ -2741,11 +2873,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         agentGroupHistory,
         agentGroupHistoryUnavailable,
         selectedMediobotId,
-        selectedAgent,
         agentPreferences,
         setAgentModelPreference,
         setAgentEffortPreference,
         getAgentPreference,
+        getThreadAgentStatus,
         selectAgent,
         updateAgentStatus,
         addAgent,
@@ -2778,7 +2910,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         connectProvider,
         addCustomProvider,
         disconnectProvider,
+        activeTeamId,
+        setActiveTeamId,
+        createNewTeam,
+        createNewMainTeamChat,
         createNewChat,
+        recruitSpecialist,
         deleteThread,
         renameThread,
         regenerateThreadTitle,

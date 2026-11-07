@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Cpu } from 'lucide-react';
-import type { ResourceGovernorStatus } from '@mediobot-v2/contracts';
+import type { ResourceGovernorStatus } from '../types';
 
 const DEFAULT_RESOURCE_STATUS: ResourceGovernorStatus = {
   memoryPressureState: 'nominal',

@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import {
   Clock,
   MoreHorizontal,
@@ -12,6 +12,221 @@ import {
 } from 'lucide-react';
 import { useApp } from '../../state/AppContext';
 import { SignInModal } from '../auth/SignInModal';
+import { CircularTokenMeter } from '../../components/CircularTokenMeter';
+import { getMediobotPresentation } from '../mediobots/presentation';
+
+export type SpecialistStatus = 'working' | 'idle' | 'disabled';
+
+export interface SpecialistStatusInfo {
+  status: SpecialistStatus;
+  statusLabel: string;
+  tooltip: string;
+}
+
+export function getSpecialistStatus(
+  agent: {
+    id?: string;
+    name?: string;
+    status?: string;
+    availability?: string;
+    executable?: boolean;
+    directConversationAvailable?: boolean;
+    currentTask?: string;
+    activityState?: string;
+  }
+): SpecialistStatusInfo {
+  const name = agent.name || 'Specialist';
+  const isWorking =
+    agent.status === 'working' ||
+    agent.activityState === 'working' ||
+    agent.activityState === 'running';
+
+  if (isWorking) {
+    return {
+      status: 'working',
+      statusLabel: 'Working',
+      tooltip: `${name} (Working)`,
+    };
+  }
+
+  const isDisabled =
+    agent.availability === 'unavailable' ||
+    agent.availability === 'not-configured' ||
+    agent.currentTask === 'unavailable' ||
+    agent.currentTask === 'not-configured' ||
+    (agent.availability !== 'available' && agent.executable === false && agent.status === 'waiting' && !agent.directConversationAvailable);
+
+  if (isDisabled) {
+    return {
+      status: 'disabled',
+      statusLabel: 'Disabled',
+      tooltip: `${name} (Disabled)`,
+    };
+  }
+
+  return {
+    status: 'idle',
+    statusLabel: 'Idle',
+    tooltip: `${name} (Idle)`,
+  };
+}
+
+export const SpecialistStatusIndicator: React.FC<{
+  status: SpecialistStatus;
+  className?: string;
+}> = ({ status, className = '' }) => {
+  if (status === 'working') {
+    return (
+      <span
+        data-status="working"
+        data-testid="status-indicator-working"
+        className={`relative flex h-2 w-2 items-center justify-center shrink-0 ${className}`}
+        aria-label="Working"
+      >
+        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+        <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
+      </span>
+    );
+  }
+
+  if (status === 'disabled') {
+    return (
+      <span
+        data-status="disabled"
+        data-testid="status-indicator-disabled"
+        className={`border border-neutral-600 w-2 h-2 rounded-full shrink-0 bg-transparent ${className}`}
+        aria-label="Disabled"
+      />
+    );
+  }
+
+  return (
+    <span
+      data-status="idle"
+      data-testid="status-indicator-idle"
+      className={`bg-neutral-500 w-2 h-2 rounded-full shrink-0 ${className}`}
+      aria-label="Idle"
+    />
+  );
+};
+
+export const SpecialistDeck: React.FC<{ isLight?: boolean }> = ({ isLight }) => {
+  const { agents, selectedMediobotId, selectAgent, activeThread } = useApp();
+
+  const assignedSpecialistIds = useMemo(() => {
+    if (!activeThread) return [];
+    if (Array.isArray(activeThread.assignedSpecialists)) {
+      return activeThread.assignedSpecialists;
+    }
+    // If turns exist and no explicit assignedSpecialists array, infer from active thread turns / owner
+    if (activeThread.turns && activeThread.turns.length > 0) {
+      const ids = new Set<string>();
+      if (activeThread.ownerAgent && activeThread.ownerAgent !== 'maestro') {
+        ids.add(activeThread.ownerAgent);
+      }
+      if (activeThread.specialistId && activeThread.specialistId !== 'maestro') {
+        ids.add(activeThread.specialistId);
+      }
+      for (const turn of activeThread.turns) {
+        if (turn.items) {
+          for (const item of turn.items) {
+            if (item.actor?.type === 'mediobot' && item.actor.mediobotId && item.actor.mediobotId !== 'maestro') {
+              ids.add(item.actor.mediobotId);
+            }
+          }
+        }
+      }
+      return Array.from(ids);
+    }
+    if (activeThread.specialistId && activeThread.specialistId !== 'maestro') {
+      return [activeThread.specialistId];
+    }
+    return [];
+  }, [activeThread]);
+
+  const deckAgents = useMemo(() => {
+    if (assignedSpecialistIds.length === 0) return [];
+    const list = agents.filter((a) => a.id !== 'maestro' && assignedSpecialistIds.includes(a.id));
+    const order = ['cody', 'tester', 'research', 'doc', 'vision', 'scraapy', 'cli'];
+    return list.sort((a, b) => {
+      const idxA = order.indexOf(a.id);
+      const idxB = order.indexOf(b.id);
+      if (idxA !== -1 && idxB !== -1) return idxA - idxB;
+      if (idxA !== -1) return -1;
+      if (idxB !== -1) return 1;
+      return (a.name || '').localeCompare(b.name || '');
+    });
+  }, [agents, assignedSpecialistIds]);
+
+  if (deckAgents.length === 0) {
+    return (
+      <div
+        data-testid="specialist-deck-empty"
+        className="hidden"
+        aria-hidden="true"
+      />
+    );
+  }
+
+  return (
+    <div
+      data-testid="specialist-deck"
+      className="flex flex-col items-center gap-1.5 w-full my-1 py-1 border-t border-b border-black/5 dark:border-white/5 overflow-y-auto max-h-[190px] scrollbar-thin scrollbar-thumb-neutral-400/40 dark:scrollbar-thumb-neutral-700/60 scroll-smooth pr-0.5"
+      role="region"
+      aria-label="Specialist Deck"
+    >
+      {deckAgents.map((agent) => {
+        const statusInfo = getSpecialistStatus(agent);
+        const presentation = getMediobotPresentation(agent.id, agent.name, agent.role);
+        const isSelected = selectedMediobotId === agent.id;
+
+        return (
+          <button
+            key={agent.id}
+            onClick={() => selectAgent(agent.id)}
+            data-testid={`specialist-deck-${agent.id}`}
+            data-agent-status={statusInfo.status}
+            title={statusInfo.tooltip}
+            aria-label={statusInfo.tooltip}
+            className={`relative w-8 h-8 rounded-xl flex items-center justify-center transition-all group cursor-pointer ${
+              isSelected
+                ? isLight
+                  ? 'bg-[#dedee6] shadow-xs'
+                  : 'bg-[#39383f] shadow-xs'
+                : isLight
+                ? 'hover:bg-[#dedee5]'
+                : 'hover:bg-[#323137]'
+            }`}
+          >
+            {/* Avatar icon with thick vertical blinking eyes */}
+            <div
+              className={`w-[18px] h-[18px] rounded-full ${presentation.avatar} flex items-center justify-center gap-[2px] shrink-0 shadow-xs`}
+            >
+              <span className={`w-[2.8px] h-[6px] rounded-full ${presentation.eye} animate-eye-blink block`} />
+              <span className={`w-[2.8px] h-[6px] rounded-full ${presentation.eye} animate-eye-blink block`} />
+            </div>
+
+            {/* Status indicator on bottom-right of avatar */}
+            <div className="absolute -bottom-0.5 -right-0.5">
+              <SpecialistStatusIndicator status={statusInfo.status} />
+            </div>
+
+            {/* Tooltip on hover */}
+            <span
+              className={`pointer-events-none absolute left-[54px] top-1/2 -translate-y-1/2 px-2 py-1 text-[11px] font-medium rounded shadow-md whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity z-50 ${
+                isLight
+                  ? 'bg-[#ffffff] text-[#111827] border border-[#dcdce2]'
+                  : 'bg-[#1e1e22] text-[#e4e4e7] border border-[#2b2b30]'
+              }`}
+            >
+              {statusInfo.tooltip}
+            </span>
+          </button>
+        );
+      })}
+    </div>
+  );
+};
 
 export const NavRail: React.FC = () => {
   const {
@@ -102,7 +317,7 @@ export const NavRail: React.FC = () => {
   };
 
   const handleMaestroClick = () => {
-    selectAgent('maestro');
+    selectAgent(null);
     if (isSettingsView) {
       closeSettings();
       setSidebarTab('maestro');
@@ -299,7 +514,7 @@ export const NavRail: React.FC = () => {
                 isLight ? 'bg-[#ffffff] text-[#111827] border border-[#dcdce2]' : 'bg-[#1e1e22] text-[#e4e4e7] border border-[#2b2b30]'
               }`}
             >
-              Terminal / CLI
+              Terminal
             </span>
           </button>
 
@@ -338,24 +553,27 @@ export const NavRail: React.FC = () => {
               Library
             </span>
           </button>
-
         </div>
 
+        {/* Middle / Specialist Deck */}
+        <SpecialistDeck isLight={isLight} />
+
         {/* Bottom Nav Group */}
-        <div className="flex flex-col items-center gap-2 w-full relative">
+        <div className="flex flex-col items-center gap-1.5 w-full relative">
+          {/* Circular Token Usage Meter */}
+          <CircularTokenMeter size={34} />
+
           {/* User Account / Profile Button */}
           <button
             ref={profileBtnRef}
-            onClick={() => {
-              setIsProfileMenuOpen((prev) => !prev);
-            }}
+            onClick={() => setIsProfileMenuOpen((prev) => !prev)}
             title={user.isSignedIn ? user.name : 'Account / Sign in'}
             aria-label="Account / Profile"
-            className={`w-10 h-10 flex items-center justify-center rounded-xl transition-all duration-300 group relative cursor-pointer ring-1 ring-black/5 dark:ring-white/10 hover:ring-2 hover:ring-blue-500/30 active:scale-95 ${
+            className={`w-10 h-10 flex items-center justify-center rounded-xl transition-all duration-300 group relative cursor-pointer ${
               isProfileMenuOpen
                 ? isLight
-                  ? 'bg-[#dedee6] text-[#09090b] shadow-xs'
-                  : 'bg-[#39383f] text-white shadow-xs'
+                  ? 'bg-[#dedee6] text-[#09090b]'
+                  : 'bg-[#39383f] text-white'
                 : isLight
                 ? 'text-[#6b6a75] hover:text-[#09090b] hover:bg-[#dedee5]'
                 : 'text-[#8e8d96] hover:text-white hover:bg-[#323137]'

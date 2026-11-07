@@ -42,8 +42,15 @@ export interface PersistedWorkspaceUIState {
   readonly activeWorkbenchTabId: string | null;
 }
 
-import type { WorkspaceWatchEvent } from "@mediobot-v2/contracts";
-export type { WorkspaceWatchEvent };
+export interface WorkspaceWatchEvent {
+  readonly path: string;
+  readonly type: 'create' | 'modify' | 'delete';
+  readonly isDirectory: boolean;
+  readonly timestamp?: number;
+  readonly relativePath?: string;
+  readonly origin?: string;
+  readonly contentHash?: string;
+}
 
 export interface RuntimeEvent {
   id?: string;
@@ -73,6 +80,7 @@ export interface RuntimeEvent {
 
 export interface RuntimeTaskSummary {
   readonly id: string;
+  readonly threadId?: string;
   readonly state: string;
   readonly goal: string;
   readonly assignedMediobot?: { readonly id: string; readonly name: string };
@@ -150,7 +158,8 @@ export interface IMediobotRuntime {
   uploadAttachment(file: { readonly name: string; readonly type: string; readonly base64: string }): Promise<import("../types").TurnAttachment>;
   removeAttachment(id: string): Promise<void>;
   respondToApproval(turnId: string, approvalId: string, approved: boolean): Promise<void>;
-  cancelTurn(threadId: string, turnId: string): Promise<void>;
+  cancelTurn(threadId: string, turnId?: string, isExplicit?: boolean): Promise<void>;
+  setActiveThreadId?(id: string | null): void;
   onEvent(listener: (event: RuntimeEvent) => void): () => void;
   getInitialProjects(): ProjectInfo[];
   getInitialThreads(): Thread[];
@@ -177,7 +186,8 @@ export interface IMediobotRuntime {
     openTabs: Array<{ path: string; name: string }>,
     expandedPaths: string[],
     workbenchTabs?: PersistedWorkbenchTab[],
-    activeWorkbenchTabId?: string | null
+    activeWorkbenchTabId?: string | null,
+    workspaceId?: string | null
   ): Promise<void>;
   onWorkspaceEvent(listener: (event: { type: "state" | "fs"; state?: { status: WorkspaceStatus; session: WorkspaceSession | null }; fsEvents?: WorkspaceWatchEvent[] }) => void): () => void;
   getConnectedProviders(): Promise<any[]>;

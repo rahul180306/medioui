@@ -51,24 +51,28 @@ export const ActivityItem: React.FC<{
     return <ApprovalBanner approval={item.approval} turnId={turnId} />;
   }
 
+  // If item is context compaction
+  if (
+    (item.activityState as string) === 'compacted' ||
+    item.activityLabel?.toLowerCase().includes('compacted') ||
+    item.text?.toLowerCase().includes('compacted')
+  ) {
+    return (
+      <div data-testid="context-compacted" className={`flex items-center gap-1.5 py-1 text-xs select-none ${isLight ? 'text-neutral-500' : 'text-neutral-400'}`}>
+        <span>↩</span>
+        <span>Context automatically compacted</span>
+      </div>
+    );
+  }
+
   // If item is perception or computer action
   if (item.type === 'perception_snapshot' || item.type === 'computer_action') {
     return <PerceptionView computerAction={item.computerAction} perception={item.perception} />;
   }
 
-  // In Main Chat, only keep clean delegation notices (e.g. "Assigned Cody");
-  // all internal thoughts, inspecting, and progress belong strictly to the specialist's separate chat!
+  // In Main Chat, strip ALL raw activity boxes, delegation notices, and tool chatter.
+  // Main Chat is strictly clean executive narrative streaming with zero nested border boxes.
   if (isMainChat) {
-    const isDelegation = item.activityState === 'planning' || item.activityLabel?.startsWith('Assigned') || item.activityLabel?.includes('started working');
-    if (isDelegation && item.activityLabel) {
-      return (
-        <div className={`flex items-center gap-2 py-1 text-xs select-none ${isLight ? 'text-neutral-600' : 'text-neutral-400'}`}>
-          <span className="text-sky-400">🌐</span>
-          <span className="font-medium">{item.activityLabel}</span>
-        </div>
-      );
-    }
-    // Suppress internal thoughts and intermediate progress in Main Chat
     return null;
   }
 
@@ -92,16 +96,7 @@ export const ActivityItem: React.FC<{
     }
     if (isActive) {
       return (
-        <LatticeLoader
-          status="working"
-          label=""
-          color={isLight ? '#475569' : '#d4d4d8'}
-          fontSize={10}
-          cellSize={3.5}
-          gap={1.2}
-          showTimer={false}
-          className="shrink-0"
-        />
+        <Loader2 className="w-3.5 h-3.5 text-amber-500 animate-spin shrink-0" />
       );
     }
 
@@ -190,9 +185,9 @@ export const ActivityItem: React.FC<{
       </div>
 
       {isDetailOpen && item.activityDetail && (
-        <div className={`mt-1 ml-5 p-2 ${
-          isLight ? 'bg-[#f8f9fa] border-[#e2e4e8] text-[#334155]' : 'bg-[#17171b] border-[#26262d] text-neutral-400'
-        } border rounded-md text-[11px] font-mono leading-relaxed whitespace-pre-line`}>
+        <div className={`mt-1 ml-5 p-2.5 ${
+          isLight ? 'bg-[#f8f9fa] border-[#e2e4e8] text-[#334155]' : 'bg-[#18181d] border-[#2b2b34] text-neutral-300'
+        } border rounded-lg text-[11px] font-mono leading-relaxed whitespace-pre-line`}>
           {item.activityDetail}
         </div>
       )}

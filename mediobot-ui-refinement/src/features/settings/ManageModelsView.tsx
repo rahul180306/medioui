@@ -9,6 +9,7 @@ import {
   ExternalLink,
   KeyRound,
   ShieldCheck,
+  Sparkles,
 } from 'lucide-react';
 import { ProviderIcon } from './ProviderIcons';
 import { ProviderConfig, ConfiguredModel, CustomHeader, CatalogProviderItem } from '../../types';

@@ -193,7 +193,8 @@ export class MockMediobotRuntime implements IMediobotRuntime {
     openTabs: Array<{ path: string; name: string }>,
     expandedPaths: string[],
     workbenchTabs?: PersistedWorkbenchTab[],
-    activeWorkbenchTabId?: string | null
+    activeWorkbenchTabId?: string | null,
+    workspaceId?: string | null
   ): Promise<void> {
     if (!this.session) return;
     this.uiState = {
@@ -350,12 +351,14 @@ export class MockMediobotRuntime implements IMediobotRuntime {
 
   async respondToApproval(_turnId: string, _approvalId: string, _approved: boolean): Promise<void> {}
 
-  async cancelTurn(threadId: string, turnId: string): Promise<void> {
+  setActiveThreadId(_id: string | null): void {}
+
+  async cancelTurn(threadId: string, turnId?: string, _isExplicit?: boolean): Promise<void> {
     this.clearSimulations();
     this.emitEvent({
       type: 'turn.cancelled',
       threadId,
-      turnId,
+      turnId: turnId || 'active-turn',
       timestamp: Date.now(),
       payload: { message: 'Turn was cancelled by user.' },
     });

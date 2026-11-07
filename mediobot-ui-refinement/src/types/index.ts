@@ -1,9 +1,50 @@
-export type AgentActivityState = import('@mediobot-v2/domain').WorkerActivityState;
+export type AgentActivityState =
+  | 'idle'
+  | 'thinking'
+  | 'planning'
+  | 'inspecting'
+  | 'editing'
+  | 'running'
+  | 'testing'
+  | 'verifying'
+  | 'researching'
+  | 'collaborating'
+  | 'waiting'
+  | 'waiting_for_approval'
+  | 'retrying'
+  | 'recovered'
+  | 'verified'
+  | 'blocked'
+  | 'completed'
+  | 'failed'
+  | 'cancelled';
+
+export interface ResourceGovernorStatus {
+  memoryPressureState: 'nominal' | 'moderate' | 'critical' | 'elevated';
+  effectiveConcurrencyLimit: number;
+  queuedTasksCount: number;
+  activeLeases: {
+    executionSlots: number;
+    subprocesses: number;
+    browserSessions: number;
+  };
+  telemetry: {
+    totalMemoryBytes: number;
+    freeMemoryBytes: number;
+    processResidentMemoryBytes: number;
+    processHeapUsedBytes: number;
+    usedMemoryPercent?: number;
+    processRssBytes?: number;
+    systemCpuPercent?: number;
+    platform?: string;
+    loadAverage1m?: string;
+  };
+}
 
 export type ApprovalRisk = 'low' | 'medium' | 'high';
 export type ApprovalStatus = 'pending' | 'requested' | 'approved' | 'rejected' | 'expired' | 'cancelled';
 
-export type AgentStatus = 'idle' | 'active' | 'working' | 'waiting' | 'completed' | 'failed';
+export type AgentStatus = 'idle' | 'active' | 'working' | 'waiting' | 'completed' | 'failed' | 'development';
 
 export interface MedioBotAgent {
   /** Stable durable runtime identity. */
@@ -29,6 +70,12 @@ export interface FileDiff {
   additions: number;
   deletions: number;
   truncated?: boolean;
+  lines?: {
+    type: 'context' | 'add' | 'remove';
+    content: string;
+    oldLineNo?: number;
+    newLineNo?: number;
+  }[];
   hunks?: {
     header?: string;
     oldStart?: number;
@@ -119,12 +166,28 @@ export type ThreadItemType =
   | 'user_message'
   | 'agent_message'
   | 'activity'
+  | 'peer_message'
   | 'tool_execution'
   | 'diff'
   | 'approval_request'
   | 'computer_action'
   | 'perception_snapshot'
   | 'perception';
+
+/** Live specialist-to-specialist collaboration message. */
+export interface PeerMessageData {
+  readonly messageId: string;
+  readonly messageKind: 'request' | 'response' | 'finding';
+  readonly scope: 'direct' | 'group';
+  readonly senderId: string;
+  readonly senderName: string;
+  readonly recipientId: string;
+  readonly recipientName: string;
+  readonly sequenceNumber: number;
+  readonly status: 'sent' | 'delivered' | 'failed' | 'cancelled' | 'timed_out';
+  readonly text?: string;
+  readonly groupId?: string;
+}
 
 export type ConversationActor =
   | { readonly type: 'user'; readonly name?: string }
@@ -150,11 +213,13 @@ export interface ThreadItem {
   diff?: FileDiff;
   tool?: ToolExecutionData;
   approval?: ApprovalRequestData;
+  peerMessage?: PeerMessageData;
   computerAction?: ComputerActionData;
   perception?: PerceptionData;
   attachments?: TurnAttachment[];
   eventSequence?: number;
   failure?: TurnFailureData;
+  evidenceRefs?: string[];
 }
 
 export interface TurnAttachment {
@@ -313,9 +378,16 @@ export interface ThreadModelSelection {
 
 export interface Thread {
   id: string;
+  teamId?: string;
   title: string;
   projectId?: string;
   specialistId?: string;
+  assignedSpecialists?: string[];
+  ownerAgent?: string;
+  threadType?: 'team' | 'mind';
+  agentScope?: string;
+  mode?: 'connected_main' | 'standalone_specialist' | (string & {});
+  isActive?: boolean;
   createdAt: number;
   updatedAt: number;
   model?: ModelOption;
@@ -356,12 +428,15 @@ export interface CatalogProviderItem {
   readonly id: string;
   readonly name: string;
   readonly subtitle?: string;
+  readonly description?: string;
   readonly badge?: string;
-  readonly group: 'Popular' | 'Other';
+  readonly modelsCount?: number;
+  readonly connected?: boolean;
+  readonly group: 'Popular' | 'Other' | 'Open Source' | (string & {});
   readonly iconType: string;
   readonly isCustom?: boolean;
   readonly adapterType?: string;
-  readonly defaultModels: ReadonlyArray<{
+  readonly defaultModels?: ReadonlyArray<{
     readonly id: string;
     readonly name: string;
     readonly capabilities?: ModelCapabilities;
@@ -370,8 +445,8 @@ export interface CatalogProviderItem {
     readonly description?: string;
   }>;
   readonly defaultBaseUrl?: string;
-  readonly requiresApiKey: boolean;
-  readonly configurableBaseUrl: boolean;
+  readonly requiresApiKey?: boolean;
+  readonly configurableBaseUrl?: boolean;
   readonly documentationUrl?: string;
 }
 
