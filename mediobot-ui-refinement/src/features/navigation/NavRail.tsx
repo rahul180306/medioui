@@ -568,8 +568,7 @@ export const NavRail: React.FC = () => {
           </button>
         </div>
 
-        {/* Middle / Specialist Deck */}
-        <SpecialistDeck isLight={isLight} />
+        {/* Global navigation rail contains application navigation only - sticky specialist icons removed */}
 
         {/* Bottom Nav Group */}
         <div className="flex flex-col items-center gap-1.5 w-full relative">

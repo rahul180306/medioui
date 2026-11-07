@@ -70,12 +70,13 @@ const mapProviderConnection = (sp: any): ProviderConfig => ({
 });
 
 export const INITIAL_AGENTS: MedioBotAgent[] = [
-  { id: 'maestro', name: 'Maestro', group: 'orchestrator', role: 'Team orchestration', status: 'idle' },
+  { id: 'maestro', definitionId: 'maestro', directConversationAvailable: true, name: 'Maestro', group: 'orchestrator', role: 'Team orchestration', status: 'idle' },
   { id: 'cody', definitionId: 'cody', directConversationAvailable: true, name: 'Cody', group: 'specialist', role: 'Software engineering', status: 'waiting', currentTask: 'development' },
-  { id: 'vision', name: 'Vision', group: 'specialist', role: 'Browser and visual work', status: 'idle' },
-  { id: 'doc', definitionId: 'doc', directConversationAvailable: true, name: 'Doc', group: 'specialist', role: 'Documentation intelligence', status: 'waiting', currentTask: 'unavailable' },
-  { id: 'research', definitionId: 'research', directConversationAvailable: true, name: 'Research', group: 'specialist', role: 'Web research', status: 'waiting', currentTask: 'unavailable' },
-  { id: 'tester', definitionId: 'tester', directConversationAvailable: true, name: 'Tester', group: 'specialist', role: 'Independent verification', status: 'waiting', currentTask: 'unavailable' },
+  { id: 'tester', definitionId: 'tester', directConversationAvailable: true, name: 'Tester', group: 'specialist', role: 'Independent verification', status: 'waiting', currentTask: 'verification' },
+  { id: 'research', definitionId: 'research', directConversationAvailable: true, name: 'Research', group: 'specialist', role: 'Web research', status: 'waiting', currentTask: 'research' },
+  { id: 'doc', definitionId: 'doc', directConversationAvailable: true, name: 'Doc', group: 'specialist', role: 'Documentation intelligence', status: 'waiting', currentTask: 'documentation' },
+  { id: 'scraapy', definitionId: 'scraapy', directConversationAvailable: true, name: 'Scraapy', group: 'specialist', role: 'Web scraping & extraction', status: 'waiting', currentTask: 'scraping' },
+  { id: 'vision', definitionId: 'vision', directConversationAvailable: true, name: 'Vision', group: 'specialist', role: 'UI inspection & visual review', status: 'idle' },
 ];
 
 const mediobotSlug = (value: string): string => value.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
@@ -884,12 +885,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const openChatTab = useCallback((threadId: string) => {
     const thread = threads.find((t) => t.id === threadId);
-    const owner = thread ? (thread.ownerAgent || (thread as any).owner_agent || thread.specialistId) : null;
-    const cleanOwner = owner ? normalizeMediobotId(owner) : null;
-    if (cleanOwner && cleanOwner !== 'maestro') {
-      setSelectedMediobotId(cleanOwner);
-    } else {
+    if (thread?.threadType === 'team') {
       setSelectedMediobotId(null);
+    } else {
+      const owner = thread ? (thread.specialistId || thread.ownerAgent || (thread as any).owner_agent) : null;
+      const cleanOwner = owner ? normalizeMediobotId(owner) : null;
+      setSelectedMediobotId(cleanOwner);
     }
     const tabId = `chat:${threadId}`;
 
@@ -1269,42 +1270,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   agentTaskHistoryRef.current = agentTaskHistory;
   const agentTaskProjections = useRef(new Map<string, Map<string, AgentTaskProjection>>());
   const agentTaskProjectionWorkspace = useRef<string | null>(null);
-
-  const selectAgent = useCallback((agentId: string | null) => {
-    setSelectedMediobotId(agentId);
-    if (agentId) {
-      const cleanId = normalizeMediobotId(agentId);
-      if (cleanId === 'maestro') {
-        setSelectedMediobotId(null);
-        const maestroThread = threads.find(
-          (t) => (t.teamId === activeTeamId || !activeTeamId) && (t.ownerAgent === 'maestro' || (!t.ownerAgent && (!t.specialistId || normalizeMediobotId(t.specialistId) === 'maestro')))
-        ) || threads.find(
-          (t) => (t.ownerAgent === 'maestro' || (!t.ownerAgent && (!t.specialistId || normalizeMediobotId(t.specialistId) === 'maestro')))
-        );
-        if (maestroThread) {
-          openChatTab(maestroThread.id);
-        }
-        return;
-      }
-      const existingSpecialistThread = threads.find(
-        (t) => (t.teamId === activeTeamId || !activeTeamId) && ((t.ownerAgent === cleanId) || (t.specialistId && normalizeMediobotId(t.specialistId) === cleanId))
-      );
-      if (existingSpecialistThread) {
-        openChatTab(existingSpecialistThread.id);
-      } else {
-        createNewChat(cleanId, activeTeamId);
-      }
-    } else {
-      const maestroThread = threads.find(
-        (t) => (t.teamId === activeTeamId || !activeTeamId) && (t.ownerAgent === 'maestro' || (!t.ownerAgent && (!t.specialistId || normalizeMediobotId(t.specialistId) === 'maestro')))
-      ) || threads.find(
-        (t) => (t.ownerAgent === 'maestro' || (!t.ownerAgent && (!t.specialistId || normalizeMediobotId(t.specialistId) === 'maestro')))
-      );
-      if (maestroThread) {
-        openChatTab(maestroThread.id);
-      }
-    }
-  }, [threads, openChatTab, activeTeamId]);
 
   useEffect(() => {
     if (!agentRegistryLoaded || !selectedMediobotId || agents.some(agent => agent.id === selectedMediobotId)) return;
@@ -1752,11 +1717,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }, [activeProject]);
 
   const createNewChat = useCallback((targetSpecialistId?: string | null, targetTeamId?: string | null) => {
-    // A new chat is always a unified team session unless explicitly targeting a specialist
     const cleanSpec = targetSpecialistId ? normalizeMediobotId(targetSpecialistId) : null;
-    const isSpecialist = Boolean(cleanSpec && cleanSpec !== 'maestro');
+    const isDirectChat = Boolean(cleanSpec);
 
-    if (isSpecialist && cleanSpec) {
+    if (cleanSpec) {
       setSelectedMediobotId(cleanSpec);
     } else {
       setSelectedMediobotId(null);
@@ -1766,12 +1730,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       ? targetTeamId
       : (activeTeamId || null);
 
-    // Deduplication check: if current active tab is already an untouched blank new chat for this same specialist/maestro, keep focus on it
+    // Deduplication check: if current active tab is already an untouched blank new chat for this same specialist/agent, keep focus on it
     if (activeWorkbenchTab?.kind === 'chat') {
       const curThread = threads.find((t) => t.id === activeWorkbenchTab.threadId);
       const curDraft = drafts[activeWorkbenchTab.threadId] ?? '';
       const curSpec = curThread?.specialistId ? normalizeMediobotId(curThread.specialistId) : null;
-      if (curThread && curThread.turns.length === 0 && !curDraft.trim() && curSpec === (isSpecialist ? cleanSpec : null) && (curThread.teamId === effectiveTeamId || !effectiveTeamId)) {
+      if (curThread && curThread.turns.length === 0 && !curDraft.trim() && curSpec === cleanSpec && (curThread.teamId === effectiveTeamId || !effectiveTeamId)) {
         pushLocation({ type: 'thread', threadId: curThread.id });
         return;
       }
@@ -1780,10 +1744,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const uniqueSuffix = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID().slice(0, 8) : Math.random().toString(36).slice(2, 8);
     const threadId = `thread-${Date.now()}-${uniqueSuffix}`;
 
-    const specAgent = isSpecialist && cleanSpec
+    const specAgent = isDirectChat && cleanSpec
       ? agents.find((a) => normalizeMediobotId(a.id) === cleanSpec || normalizeMediobotId(a.preferenceId) === cleanSpec)
       : undefined;
-    const specTitle = isSpecialist ? `${specAgent?.name ?? 'Specialist'} · New chat` : 'New chat';
+    const specTitle = isDirectChat ? `${specAgent?.name ?? 'Specialist'} · New chat` : 'New chat';
 
     // Resolve the model this fresh thread should start on.
     const firstEnabledModel = enabledModels[0];
@@ -1800,14 +1764,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     const newThread: Thread = {
       id: threadId,
-      teamId: effectiveTeamId ?? (isSpecialist ? undefined : threadId),
+      teamId: effectiveTeamId ?? (isDirectChat ? undefined : threadId),
       title: specTitle,
       projectId: activeProjectId || '',
-      ownerAgent: isSpecialist && cleanSpec ? cleanSpec : 'maestro',
-      threadType: isSpecialist ? 'mind' : 'team',
-      ...(isSpecialist && cleanSpec ? { specialistId: cleanSpec, assignedSpecialists: [cleanSpec] } : { assignedSpecialists: [] }),
-      mode: isSpecialist ? 'standalone_specialist' : 'connected_main',
-      agentScope: isSpecialist && cleanSpec ? cleanSpec : 'maestro',
+      ownerAgent: isDirectChat && cleanSpec ? cleanSpec : 'team',
+      threadType: isDirectChat ? 'mind' : 'team',
+      ...(isDirectChat && cleanSpec ? { specialistId: cleanSpec, assignedSpecialists: [cleanSpec] } : { assignedSpecialists: [] }),
+      mode: isDirectChat ? 'standalone_specialist' : 'connected_main',
+      agentScope: isDirectChat && cleanSpec ? cleanSpec : 'team',
       createdAt: Date.now(),
       updatedAt: Date.now(),
       model: defaultModelName,
@@ -1863,11 +1827,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       teamId: newTeamId,
       title: 'New chat',
       projectId: activeProjectId || '',
-      ownerAgent: 'maestro',
+      ownerAgent: 'team',
       threadType: 'team',
       assignedSpecialists: [],
       mode: 'connected_main',
-      agentScope: 'maestro',
+      agentScope: 'team',
       createdAt: Date.now(),
       updatedAt: Date.now(),
       model: defaultModelName,
@@ -1918,11 +1882,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       teamId: currentTeamId,
       title: 'New chat',
       projectId: activeProjectId || '',
-      ownerAgent: 'maestro',
+      ownerAgent: 'team',
       threadType: 'team',
       assignedSpecialists: [],
       mode: 'connected_main',
-      agentScope: 'maestro',
+      agentScope: 'team',
       createdAt: Date.now(),
       updatedAt: Date.now(),
       model: defaultModelName,
@@ -1950,6 +1914,36 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     } catch {}
     pushLocation({ type: 'thread', threadId: mainThreadId });
   }, [activeTeamId, activeThread, activeProjectId, activeBranch, approvalMode, enabledModels, draftModelSelection, pushLocation, setActiveTeamId]);
+
+  const selectAgent = useCallback((agentId: string | null) => {
+    setSelectedMediobotId(agentId);
+    if (agentId) {
+      const cleanId = normalizeMediobotId(agentId);
+      const existingSpecialistThread = threads.find(
+        (t) => (t.teamId === activeTeamId || !activeTeamId) &&
+               t.threadType !== 'team' &&
+               ((t.ownerAgent === cleanId) || (t.specialistId && normalizeMediobotId(t.specialistId) === cleanId))
+      ) || threads.find(
+        (t) => t.threadType !== 'team' &&
+               ((t.ownerAgent === cleanId) || (t.specialistId && normalizeMediobotId(t.specialistId) === cleanId))
+      );
+      if (existingSpecialistThread) {
+        openChatTab(existingSpecialistThread.id);
+      } else {
+        createNewChat(cleanId, activeTeamId);
+      }
+    } else {
+      // Main Team selected (shared meeting room)
+      const teamThread = threads.find(
+        (t) => (t.teamId === activeTeamId || !activeTeamId) && t.threadType === 'team'
+      ) || threads.find(
+        (t) => t.threadType === 'team'
+      );
+      if (teamThread) {
+        openChatTab(teamThread.id);
+      }
+    }
+  }, [threads, openChatTab, activeTeamId, createNewChat]);
 
   const recruitSpecialist = useCallback((targetThreadId: string, specialistIds: string[]) => {
     setThreads((prev) =>

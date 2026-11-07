@@ -120,6 +120,21 @@ const PRESENTATION_BY_ID: Readonly<Record<string, MediobotPresentation>> = {
     darkBadge: 'bg-[#a7f3d0]/10 text-[#a7f3d0] border border-[#a7f3d0]/20',
     lightBadge: 'bg-emerald-100/90 text-emerald-950 border border-emerald-300/80 font-semibold',
   },
+  scraapy: {
+    id: 'scraapy',
+    displayName: 'Scraapy',
+    specialization: 'Web scraping & data extraction',
+    avatar: 'bg-[#99f6e4]',
+    eye: 'bg-[#134e4a]',
+    delay: '1.8s',
+    text: 'text-[#2dd4bf]',
+    darkText: 'text-[#2dd4bf]',
+    lightText: 'text-[#0f766e]',
+    border: 'border-[#99f6e4]/30 hover:border-[#99f6e4]/60',
+    badge: 'bg-[#99f6e4]/10 text-[#2dd4bf]',
+    darkBadge: 'bg-[#99f6e4]/10 text-[#2dd4bf] border border-[#99f6e4]/20',
+    lightBadge: 'bg-teal-100/90 text-teal-950 border border-teal-300/80 font-semibold',
+  },
 };
 
 export const normalizeMediobotId = (idOrName?: string): string => {
@@ -131,6 +146,7 @@ export const normalizeMediobotId = (idOrName?: string): string => {
   if (clean.includes('doc')) return 'doc';
   if (clean.includes('research')) return 'research';
   if (clean.includes('tester')) return 'tester';
+  if (clean.includes('scraapy')) return 'scraapy';
   if (clean.includes('deployer')) return 'deployer';
   if (clean.includes('maestro')) return 'maestro';
   return clean;
@@ -151,6 +167,8 @@ export const getMediobotAvatarColors = (id?: string, isLight: boolean = false): 
       return { bg: '#fed7aa', eye: '#000000' };
     case 'tester':
       return { bg: '#ddd6fe', eye: '#1e1b4b' };
+    case 'scraapy':
+      return { bg: '#99f6e4', eye: '#134e4a' };
     case 'deployer':
       return { bg: '#a7f3d0', eye: '#064e3b' };
     default: {
@@ -186,6 +204,8 @@ export const getMediobotCursorColor = (id?: string, isLight: boolean = false): s
       return '#fb923c';
     case 'tester':
       return '#c084fc';
+    case 'scraapy':
+      return '#2dd4bf';
     case 'deployer':
       return '#34d399';
     default: {

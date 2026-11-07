@@ -24,7 +24,7 @@ describe('Mediobot UI Design Prototype - 5 Preloaded Conversations & Complete UI
   });
 
   describe('Requirement 2 & 3: Five Complete, Preloaded Conversations in History', () => {
-    const mainThreads = MOCK_THREADS.filter((t) => t.ownerAgent === 'maestro' || t.threadType === 'team');
+    const mainThreads = MOCK_THREADS.filter((t) => t.threadType === 'team');
 
     it('contains all 5 canonical main team conversations', () => {
       expect(mainThreads.length).toBe(5);
@@ -61,8 +61,9 @@ describe('Mediobot UI Design Prototype - 5 Preloaded Conversations & Complete UI
       expect(c2).toBeDefined();
       expect(c2?.assignedSpecialists).toEqual(['cody', 'tester', 'doc']);
 
-      // Main Team is Maestro-led
-      expect(c2?.ownerAgent).toBe('maestro');
+      // Main Team is multi-participant shared meeting room
+      expect(c2?.ownerAgent).toBe('team');
+      expect(c2?.threadType).toBe('team');
       const firstTurn = c2!.turns[0];
       expect(firstTurn.prompt).toBe('Build a calculator application with a frontend, backend, and automated tests.');
       const maestroMsg = firstTurn.items.find((i) => i.type === 'agent_message' && i.actor?.mediobotId === 'maestro');
@@ -109,13 +110,22 @@ describe('Mediobot UI Design Prototype - 5 Preloaded Conversations & Complete UI
       expect(peerMsg?.peerMessage?.recipientId).toBe('scraapy');
     });
 
-    it('Conversation 4: Develop a Full-Stack Dashboard demonstrates parallel execution across Cody, Tester, Research, Doc', () => {
+    it('Conversation 4: Develop a Full-Stack Dashboard demonstrates parallel execution across Cody, Tester, Research, Doc, Vision', () => {
       const c4 = mainThreads.find((t) => t.title === 'Develop a Full-Stack Dashboard');
       expect(c4).toBeDefined();
-      expect(c4?.assignedSpecialists).toEqual(['cody', 'tester', 'research', 'doc']);
+      expect(c4?.assignedSpecialists).toEqual(['cody', 'tester', 'research', 'doc', 'vision']);
 
       const teamThreads = MOCK_THREADS.filter((t) => t.teamId === 'team-dashboard');
-      expect(teamThreads.length).toBe(5); // Main + 4 specialists
+      expect(teamThreads.length).toBe(7); // Main + Maestro direct + 5 specialists
+    });
+
+    it('verifies Maestro has its own direct chat distinct from Main Team shared room', () => {
+      const maestroChats = MOCK_THREADS.filter((t) => t.specialistId === 'maestro' && t.threadType === 'mind');
+      expect(maestroChats.length).toBe(5);
+      maestroChats.forEach((m) => {
+        expect(m.ownerAgent).toBe('maestro');
+        expect(m.threadType).toBe('mind');
+      });
     });
 
     it('Conversation 5: Debug a Failing Application demonstrates failure, hotfix, and unresolved blocker', () => {

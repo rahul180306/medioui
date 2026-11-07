@@ -13,6 +13,7 @@ import {
   Pencil,
   Trash2,
   RotateCcw,
+  Users,
 } from 'lucide-react';
 import { useApp } from '../../state/AppContext';
 import { FileNode } from '../../types';
@@ -499,6 +500,7 @@ export const ThreadsDrawer: React.FC = () => {
     const groupsMap = new Map<string, {
       agentId: string;
       agentName: string;
+      isTeam: boolean;
       isMaestro: boolean;
       threads: Array<{
         id: string;
@@ -510,21 +512,22 @@ export const ThreadsDrawer: React.FC = () => {
     }>();
 
     const standardAgents = [
-      { id: 'maestro', name: 'Main Team' },
-      { id: 'cody', name: 'Cody' },
-      { id: 'tester', name: 'Tester' },
-      { id: 'doc', name: 'Doc' },
-      { id: 'research', name: 'Research' },
-      { id: 'vision', name: 'Vision' },
-      { id: 'cli', name: 'CLI' },
-      { id: 'scraapy', name: 'Scraapy' },
+      { id: 'team', name: 'Main Team', isTeam: true, isMaestro: false },
+      { id: 'maestro', name: 'Maestro', isTeam: false, isMaestro: true },
+      { id: 'cody', name: 'Cody', isTeam: false, isMaestro: false },
+      { id: 'tester', name: 'Tester', isTeam: false, isMaestro: false },
+      { id: 'research', name: 'Research', isTeam: false, isMaestro: false },
+      { id: 'doc', name: 'Doc', isTeam: false, isMaestro: false },
+      { id: 'scraapy', name: 'Scraapy', isTeam: false, isMaestro: false },
+      { id: 'vision', name: 'Vision', isTeam: false, isMaestro: false },
     ];
 
     for (const sa of standardAgents) {
       groupsMap.set(sa.id, {
         agentId: sa.id,
         agentName: sa.name,
-        isMaestro: sa.id === 'maestro',
+        isTeam: sa.isTeam,
+        isMaestro: sa.isMaestro,
         threads: [],
       });
     }
@@ -535,6 +538,7 @@ export const ThreadsDrawer: React.FC = () => {
         groupsMap.set(cleanId, {
           agentId: cleanId,
           agentName: agent.name,
+          isTeam: false,
           isMaestro: cleanId === 'maestro',
           threads: [],
         });
@@ -542,25 +546,28 @@ export const ThreadsDrawer: React.FC = () => {
     }
 
     for (const t of uniqueThreads) {
-      const rawOwner = t.ownerAgent || (t as any).owner_agent || t.specialistId || 'maestro';
-      const cleanOwner = normalizeMediobotId(rawOwner) || 'maestro';
-      const isTeam = t.threadType === 'team' || cleanOwner === 'maestro';
-      const targetAgentId = isTeam ? 'maestro' : cleanOwner;
+      const isTeam = t.threadType === 'team';
+      let targetAgentId = 'team';
+      if (!isTeam) {
+        const rawOwner = t.specialistId || t.ownerAgent || (t as any).owner_agent || 'maestro';
+        const cleanOwner = normalizeMediobotId(rawOwner) || 'maestro';
+        targetAgentId = cleanOwner;
+      }
 
       if (!groupsMap.has(targetAgentId)) {
         const matchingAgent = agents.find((a) => normalizeMediobotId(a.id) === targetAgentId);
         groupsMap.set(targetAgentId, {
           agentId: targetAgentId,
           agentName: matchingAgent?.name || (targetAgentId.charAt(0).toUpperCase() + targetAgentId.slice(1)),
-          isMaestro: false,
+          isTeam: false,
+          isMaestro: targetAgentId === 'maestro',
           threads: [],
         });
       }
 
       const group = groupsMap.get(targetAgentId)!;
-      const agentDisplayName = group.isMaestro ? 'Maestro' : group.agentName;
       const cleanTitle = t.title
-        .replace(new RegExp(`^${agentDisplayName}\\s*·\\s*`, 'i'), '')
+        .replace(new RegExp(`^${group.agentName}\\s*·\\s*`, 'i'), '')
         .replace(new RegExp(`^${group.agentId}\\s*·\\s*`, 'i'), '')
         .trim() || t.title;
 
@@ -577,14 +584,15 @@ export const ThreadsDrawer: React.FC = () => {
       group.threads.sort((a, b) => b.updatedAt - a.updatedAt);
     }
 
-    return Array.from(groupsMap.values()).filter((g) => g.threads.length > 0 || g.isMaestro);
+    return Array.from(groupsMap.values()).filter((g) => g.threads.length > 0 || g.isTeam || g.isMaestro || ['cody', 'tester', 'research', 'doc', 'scraapy', 'vision'].includes(g.agentId));
   }, [uniqueThreads, agents]);
 
   const contextAgentId = useMemo(() => {
     if (!activeThread) return null;
-    const rawOwner = activeThread.ownerAgent || (activeThread as any).owner_agent || activeThread.specialistId;
+    if (activeThread.threadType === 'team') return null;
+    const rawOwner = activeThread.specialistId || activeThread.ownerAgent || (activeThread as any).owner_agent;
     const cleanOwner = rawOwner ? normalizeMediobotId(rawOwner) : null;
-    return cleanOwner && cleanOwner !== 'maestro' ? cleanOwner : null;
+    return cleanOwner;
   }, [activeThread]);
 
   const contextAgent = useMemo(() => {
@@ -852,171 +860,200 @@ export const ThreadsDrawer: React.FC = () => {
 
       {/* 2. DYNAMIC CONTENT: Home (Project Folder Explorer) vs History (Chat Threads) vs Maestro (Empty Aside Bar) */}
       {sidebarTab === 'maestro' ? (
-        /* MAESTRO ASIDE: Dedicated MedioBots & Maestro Agents Workspace */
+        /* TEAM ROSTER: Participating Team Roster for the active conversation */
         <div className="w-[270px] min-w-[270px] flex-1 flex flex-col min-h-0 select-none">
-          {/* 1. Header: Maestro Row with count matching uploaded reference */}
-          <div className="px-3.5 pt-3.5 pb-1 shrink-0">
-            {(() => {
-              const maestroPref = getAgentPreference('maestro');
-              return (
-                <button
-                  onClick={() => selectAgent('maestro')}
-                  data-testid="mediobot-select-maestro"
-                  aria-pressed={selectedMediobotId === 'maestro'}
-                  title={`Maestro (${formatShortModel(maestroPref.modelKey)} · ${maestroPref.effort}) — Team orchestration`}
-                  className={`w-full flex items-center justify-between p-2 rounded-xl transition-all cursor-pointer group ${
-                    selectedMediobotId === 'maestro'
-                      ? isLight
-                        ? 'bg-[#ffffff] text-[#09090b] shadow-xs border border-[#dcdce2]'
-                        : 'bg-[#232328] text-white shadow-xs'
-                      : isLight
-                      ? 'hover:bg-[#eaebee] text-[#18181b]'
-                      : 'hover:bg-[#202025] text-neutral-200'
-                  }`}
-                >
-                  <div className="flex items-center gap-3 min-w-0">
-                    {/* Signature white circle with two vertical blinking eyes */}
-                    <div className="w-[22px] h-[22px] rounded-full bg-[#f4f4f5] flex items-center justify-center gap-[2.5px] shrink-0 shadow-xs transition-transform group-hover:scale-105">
-                      <span
-                        className="w-[3.5px] h-[7.5px] rounded-full bg-black animate-eye-blink block"
-                        style={{ animationDelay: '0.2s' }}
-                      />
-                      <span
-                        className="w-[3.5px] h-[7.5px] rounded-full bg-black animate-eye-blink block"
-                        style={{ animationDelay: '0.2s' }}
-                      />
-                    </div>
-                    <div className="flex flex-col min-w-0 text-left">
-                      <span className={`font-semibold text-[14.5px] tracking-tight ${isLight ? 'text-[#09090b]' : 'text-neutral-100'}`}>
-                        Maestro
-                      </span>
-                      <span className={`text-[10.5px] font-mono leading-none mt-0.5 ${isLight ? 'text-neutral-500' : 'text-neutral-400'}`}>
-                        {formatShortModel(maestroPref.modelKey)} · {maestroPref.effort}
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* Agent Count Pill & Status Indicator */}
-                  <div className="flex items-center gap-2">
-                    <span className={`text-[12px] px-2 py-0.5 rounded-full ${isLight ? 'bg-[#eaebee] text-[#6b6a75]' : 'bg-[#27272e] text-neutral-400'} font-normal`}>
-                      {displayedSpecialists.length}
-                    </span>
-                    {(() => {
-                      const maestroAgent = agents.find((a) => a.id === 'maestro') || { id: 'maestro', name: 'Maestro', status: 'idle', availability: 'available' };
-                      const maestroStatus = getSpecialistStatus(maestroAgent);
-                      return (
-                        <div title={maestroStatus.tooltip}>
-                          <SpecialistStatusIndicator status={maestroStatus.status} />
-                        </div>
-                      );
-                    })()}
-                  </div>
-                </button>
-              );
-            })()}
-
-            {/* Horizontal separation line matching image */}
-            <div className={`w-full h-[1px] ${isLight ? 'bg-[#dcdce2]' : 'bg-[#292830]'} my-2.5`} />
+          {/* Header Bar */}
+          <div className="px-3.5 pt-3.5 pb-2 shrink-0 border-b border-black/5 dark:border-white/5">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className={`text-[12px] font-bold tracking-wider uppercase ${isLight ? 'text-neutral-500' : 'text-neutral-400'}`}>
+                  Team Roster
+                </h3>
+                <p className={`text-[11px] truncate mt-0.5 ${isLight ? 'text-neutral-600' : 'text-neutral-300'}`}>
+                  {activeThread?.title ? activeThread.title.replace(/^Maestro\s*·\s*/i, '').slice(0, 28) : 'Mediobot Team'}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => selectAgent(null)}
+                data-testid="roster-open-main-team"
+                className={`text-[10.5px] font-medium px-2 py-1 rounded-md transition-colors cursor-pointer flex items-center gap-1 ${
+                  selectedMediobotId === null
+                    ? isLight ? 'bg-blue-100 text-blue-800 font-semibold' : 'bg-blue-900/40 text-blue-300 border border-blue-700/50'
+                    : isLight ? 'bg-neutral-100 hover:bg-neutral-200 text-neutral-700' : 'bg-white/5 hover:bg-white/10 text-neutral-300'
+                }`}
+                title="Switch to shared Main Team conversation"
+              >
+                <Users className="w-3 h-3" />
+                <span>Main Team</span>
+              </button>
+            </div>
           </div>
 
-          {/* 2. Scrollable Dynamic MedioBots List matching uploaded reference */}
-          <div className="flex-1 overflow-y-auto px-3.5 space-y-2 scrollbar-thin scrollbar-thumb-neutral-700 pb-4">
-            {displayedSpecialists.length === 0 ? (
-              <div className="py-8 px-3 flex flex-col items-center justify-center text-center">
-                <div className="w-8 h-8 rounded-full bg-neutral-500/10 flex items-center justify-center mb-2.5">
-                  <span className="w-1.5 h-1.5 rounded-full bg-neutral-400 animate-pulse" />
-                </div>
-                <p className={`text-[13px] font-medium leading-snug mb-1 ${isLight ? 'text-neutral-700' : 'text-neutral-300'}`}>
-                  No active specialists
-                </p>
-                <p className={`text-[11.5px] leading-relaxed max-w-[210px] mb-3.5 ${isLight ? 'text-neutral-500' : 'text-neutral-400'}`}>
-                  Describe your goal to Maestro to dynamically recruit specialists for this task.
-                </p>
-                <button
-                  type="button"
-                  onClick={() => openLibrary()}
-                  className={`text-[12px] font-medium px-3 py-1.5 rounded-lg transition-colors cursor-pointer ${
-                    isLight
-                      ? 'bg-neutral-100 hover:bg-neutral-200 text-neutral-800 border border-neutral-300/70'
-                      : 'bg-white/5 hover:bg-white/10 text-neutral-200 border border-white/10'
-                  }`}
-                >
-                  Browse Library
-                </button>
+          <div className="flex-1 overflow-y-auto px-3.5 pt-2 space-y-3.5 scrollbar-thin scrollbar-thumb-neutral-700 pb-4">
+            {/* Section 1: TEAM LEADER (Maestro) */}
+            <div>
+              <div className="flex items-center justify-between mb-1.5 px-0.5">
+                <span className={`text-[10px] font-bold tracking-wider uppercase ${isLight ? 'text-neutral-400' : 'text-neutral-500'}`}>
+                  Team Leader
+                </span>
+                <span className={`text-[10px] px-1.5 py-0.2 rounded font-mono ${isLight ? 'bg-neutral-100 text-neutral-500' : 'bg-white/5 text-neutral-400'}`}>
+                  Orchestrator
+                </span>
               </div>
-            ) : (
-              displayedSpecialists.map((agent) => {
-                const isSelected = selectedMediobotId === agent.id;
-                const isWorking = agent.status === 'working';
-                const avatar = getMediobotPresentation(agent.id, agent.name, agent.role);
-                const botPref = getAgentPreference(agent.id);
-                const statusInfo = getSpecialistStatus(agent);
+              {(() => {
+                const maestroPref = getAgentPreference('maestro');
+                const maestroAgent = agents.find((a) => a.id === 'maestro') || { id: 'maestro', name: 'Maestro', status: 'idle', availability: 'available' };
+                const maestroStatus = getSpecialistStatus(maestroAgent);
+                const isSelected = selectedMediobotId === 'maestro';
 
                 return (
                   <button
-                    key={agent.id}
-                    onClick={() => selectAgent(agent.id)}
-                    data-testid={`mediobot-select-${agent.id}`}
+                    onClick={() => selectAgent('maestro')}
+                    data-testid="mediobot-select-maestro"
                     aria-pressed={isSelected}
-                    title={statusInfo.tooltip}
-                    data-activity-state={agent.activityState ?? agent.status}
-                    data-agent-status={statusInfo.status}
-                    className={`w-full flex items-center justify-between px-3 py-2 rounded-xl transition-all duration-200 ease-[cubic-bezier(0.16,1,0.3,1)] cursor-pointer text-left group ${
+                    title={`Maestro (${formatShortModel(maestroPref.modelKey)} · ${maestroPref.effort}) — Team Leader · Architecture & Delegation`}
+                    className={`w-full flex items-center justify-between p-2 rounded-xl transition-all cursor-pointer group ${
                       isSelected
                         ? isLight
                           ? 'bg-[#ffffff] text-[#09090b] shadow-xs border border-[#dcdce2]'
-                          : 'bg-[#2f2e36] text-white shadow-xs border border-[#3a3944]'
+                          : 'bg-[#232328] text-white shadow-xs border border-white/10'
                         : isLight
-                        ? 'hover:bg-[#eaebee] text-[#374151] hover:text-[#09090b] border border-transparent'
-                        : 'hover:bg-[#32313a] text-neutral-300 hover:text-white border border-transparent'
+                        ? 'hover:bg-[#eaebee] text-[#18181b]'
+                        : 'hover:bg-[#202025] text-neutral-200'
                     }`}
                   >
-                    <div className="flex items-center gap-3 min-w-0 flex-1">
-                      {/* Circle Avatar with two vertical blinking eyes */}
-                      <div
-                        className={`w-[22px] h-[22px] rounded-full ${avatar.avatar} flex items-center justify-center gap-[2.5px] shrink-0 shadow-xs transition-transform group-hover:scale-105`}
-                      >
-                        <span
-                          className={`w-[3.5px] h-[7.5px] rounded-full ${avatar.eye} animate-eye-blink block`}
-                          style={{ animationDelay: avatar.delay }}
-                        />
-                        <span
-                          className={`w-[3.5px] h-[7.5px] rounded-full ${avatar.eye} animate-eye-blink block`}
-                          style={{ animationDelay: avatar.delay }}
-                        />
+                    <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                      {/* Avatar */}
+                      <div className="w-[24px] h-[24px] rounded-full bg-[#f4f4f5] flex items-center justify-center gap-[2.5px] shrink-0 shadow-xs transition-transform group-hover:scale-105">
+                        <span className="w-[3.5px] h-[7.5px] rounded-full bg-black animate-eye-blink block" style={{ animationDelay: '0.2s' }} />
+                        <span className="w-[3.5px] h-[7.5px] rounded-full bg-black animate-eye-blink block" style={{ animationDelay: '0.2s' }} />
                       </div>
 
-                      {/* Agent Name & configured model pill */}
-                      <div className="flex items-center justify-between gap-1.5 min-w-0 flex-1">
-                        <span
-                          className={`truncate text-[14.5px] font-medium transition-colors ${isLight ? avatar.lightText : avatar.darkText}`}
-                        >
-                          {agent.name}
-                        </span>
-                        <span
-                          className={`text-[10px] font-mono px-1.5 py-0.5 rounded-md shrink-0 transition-colors ${
+                      <div className="flex flex-col min-w-0 text-left flex-1">
+                        <div className="flex items-center justify-between gap-1">
+                          <span className={`font-semibold text-[13.5px] tracking-tight ${isLight ? 'text-[#09090b]' : 'text-neutral-100'}`}>
+                            Maestro
+                          </span>
+                          <span className={`text-[9.5px] font-mono px-1.5 py-0.5 rounded shrink-0 ${
                             isSelected
-                              ? isLight
-                                ? 'bg-black/5 text-neutral-800 font-semibold'
-                                : 'bg-white/10 text-white font-medium'
-                              : isLight
-                              ? 'bg-[#eaebee] text-neutral-500'
-                              : 'bg-[#25252c] text-neutral-400'
-                          }`}
-                        >
-                          {formatShortModel(botPref.modelKey)} · {botPref.effort}
+                              ? isLight ? 'bg-black/5 text-neutral-800 font-semibold' : 'bg-white/10 text-white font-medium'
+                              : isLight ? 'bg-[#eaebee] text-neutral-500' : 'bg-[#25252c] text-neutral-400'
+                          }`}>
+                            {formatShortModel(maestroPref.modelKey)}
+                          </span>
+                        </div>
+                        <span className={`text-[10.5px] leading-tight mt-0.5 truncate ${isLight ? 'text-neutral-500' : 'text-neutral-400'}`}>
+                          Team Leader · Architecture & Delegation
                         </span>
                       </div>
                     </div>
 
-                    {/* Status Indicator */}
-                    <div className="shrink-0 ml-2" title={statusInfo.tooltip}>
-                      <SpecialistStatusIndicator status={statusInfo.status} />
+                    <div className="shrink-0 ml-1.5" title={maestroStatus.tooltip}>
+                      <SpecialistStatusIndicator status={maestroStatus.status} />
                     </div>
                   </button>
                 );
-              })
-            )}
+              })()}
+            </div>
+
+            {/* Section 2: TEAM MEMBERS / RECRUITED SPECIALISTS */}
+            <div>
+              <div className="flex items-center justify-between mb-1.5 px-0.5">
+                <span className={`text-[10px] font-bold tracking-wider uppercase ${isLight ? 'text-neutral-400' : 'text-neutral-500'}`}>
+                  Team Members
+                </span>
+                <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono ${
+                  isLight ? 'bg-neutral-100 text-neutral-600' : 'bg-neutral-800 text-neutral-400'
+                }`}>
+                  {displayedSpecialists.length}
+                </span>
+              </div>
+
+              {displayedSpecialists.length === 0 ? (
+                <div className="py-6 px-3 flex flex-col items-center justify-center text-center rounded-xl border border-dashed border-black/10 dark:border-white/10">
+                  <div className="w-7 h-7 rounded-full bg-neutral-500/10 flex items-center justify-center mb-2">
+                    <span className="w-1.5 h-1.5 rounded-full bg-neutral-400 animate-pulse" />
+                  </div>
+                  <p className={`text-[12px] font-medium leading-snug mb-1 ${isLight ? 'text-neutral-700' : 'text-neutral-300'}`}>
+                    No specialists recruited
+                  </p>
+                  <p className={`text-[10.5px] leading-relaxed max-w-[200px] mb-2.5 ${isLight ? 'text-neutral-500' : 'text-neutral-400'}`}>
+                    Maestro dynamically recruits specialists based on your task requirements.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => openLibrary()}
+                    className={`text-[11px] font-medium px-2.5 py-1 rounded-lg transition-colors cursor-pointer ${
+                      isLight
+                        ? 'bg-neutral-100 hover:bg-neutral-200 text-neutral-800 border border-neutral-300/70'
+                        : 'bg-white/5 hover:bg-white/10 text-neutral-200 border border-white/10'
+                    }`}
+                  >
+                    Browse Library
+                  </button>
+                </div>
+              ) : (
+                <div className="space-y-1.5">
+                  {displayedSpecialists.map((agent) => {
+                    const isSelected = selectedMediobotId === agent.id;
+                    const avatar = getMediobotPresentation(agent.id, agent.name, agent.role);
+                    const botPref = getAgentPreference(agent.id);
+                    const statusInfo = getSpecialistStatus(agent);
+
+                    return (
+                      <button
+                        key={agent.id}
+                        onClick={() => selectAgent(agent.id)}
+                        data-testid={`mediobot-select-${agent.id}`}
+                        aria-pressed={isSelected}
+                        title={`${agent.name} — ${avatar.specialization} (${formatShortModel(botPref.modelKey)} · ${statusInfo.statusLabel})`}
+                        data-activity-state={agent.activityState ?? agent.status}
+                        data-agent-status={statusInfo.status}
+                        className={`w-full flex items-center justify-between p-2 rounded-xl transition-all duration-200 ease-[cubic-bezier(0.16,1,0.3,1)] cursor-pointer text-left group ${
+                          isSelected
+                            ? isLight
+                              ? 'bg-[#ffffff] text-[#09090b] shadow-xs border border-[#dcdce2]'
+                              : 'bg-[#2f2e36] text-white shadow-xs border border-[#3a3944]'
+                            : isLight
+                            ? 'hover:bg-[#eaebee] text-[#374151] hover:text-[#09090b] border border-transparent'
+                            : 'hover:bg-[#32313a] text-neutral-300 hover:text-white border border-transparent'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                          <div className={`w-[22px] h-[22px] rounded-full ${avatar.avatar} flex items-center justify-center gap-[2.5px] shrink-0 shadow-xs transition-transform group-hover:scale-105`}>
+                            <span className={`w-[3.5px] h-[7.5px] rounded-full ${avatar.eye} animate-eye-blink block`} style={{ animationDelay: avatar.delay }} />
+                            <span className={`w-[3.5px] h-[7.5px] rounded-full ${avatar.eye} animate-eye-blink block`} style={{ animationDelay: avatar.delay }} />
+                          </div>
+
+                          <div className="flex flex-col min-w-0 flex-1">
+                            <div className="flex items-center justify-between gap-1">
+                              <span className={`text-[13.5px] font-medium transition-colors ${isLight ? avatar.lightText : avatar.darkText}`}>
+                                {agent.name}
+                              </span>
+                              <span className={`text-[9.5px] font-mono px-1.5 py-0.5 rounded shrink-0 ${
+                                isSelected
+                                  ? isLight ? 'bg-black/5 text-neutral-800 font-semibold' : 'bg-white/10 text-white font-medium'
+                                  : isLight ? 'bg-[#eaebee] text-neutral-500' : 'bg-[#25252c] text-neutral-400'
+                              }`}>
+                                {formatShortModel(botPref.modelKey)}
+                              </span>
+                            </div>
+                            <span className={`text-[10.5px] leading-tight mt-0.5 truncate ${isLight ? 'text-neutral-500' : 'text-neutral-400'}`}>
+                              {avatar.specialization}
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="shrink-0 ml-1.5" title={statusInfo.tooltip}>
+                          <SpecialistStatusIndicator status={statusInfo.status} />
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
           </div>
         </div>
       ) : sidebarTab === 'home' ? (
@@ -1452,10 +1489,16 @@ export const ThreadsDrawer: React.FC = () => {
                           ) : (
                             <ChevronDown className="w-3.5 h-3.5 text-neutral-400 shrink-0" />
                           )}
-                          <MediobotAvatar
-                            actor={{ type: 'mediobot', mediobotId: group.agentId, name: group.agentName }}
-                            size="xs"
-                          />
+                          {group.isTeam ? (
+                            <span className="w-3.5 h-3.5 rounded-full bg-blue-500/15 text-blue-500 flex items-center justify-center shrink-0">
+                              <Users className="w-2.5 h-2.5" />
+                            </span>
+                          ) : (
+                            <MediobotAvatar
+                              actor={{ type: 'mediobot', mediobotId: group.agentId, name: group.agentName }}
+                              size="xs"
+                            />
+                          )}
                           <span className="text-[12px] font-semibold tracking-tight truncate">{group.agentName}</span>
                           <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono ${
                             isLight ? 'bg-neutral-200/80 text-neutral-600' : 'bg-neutral-800 text-neutral-400'
@@ -1465,10 +1508,10 @@ export const ThreadsDrawer: React.FC = () => {
                         </div>
                         <button
                           type="button"
-                          data-testid={`new-chat-${group.agentId}`}
+                          data-testid={group.isTeam ? "new-chat-team" : `new-chat-${group.agentId}`}
                           onClick={(e) => {
                             e.stopPropagation();
-                            if (group.isMaestro) {
+                            if (group.isTeam) {
                               createNewMainTeamChat();
                             } else {
                               createNewChat(group.agentId, activeTeamId);

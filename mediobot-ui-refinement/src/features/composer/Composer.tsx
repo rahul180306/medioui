@@ -468,7 +468,7 @@ export const Composer: React.FC<ComposerProps> = ({ compact = false }) => {
                 ? currentAgent
                   ? `Ask ${currentAgent.name}...`
                   : 'Ask Anything'
-                : 'Do anything, / for commands, @ for sources'
+                : 'Message Main Team, / for commands, @ for sources'
             }
             sources={promptBarSources}
             commands={DEFAULT_COMMANDS}

@@ -54,7 +54,7 @@ export class MockMediobotRuntime implements IMediobotRuntime {
       const saved = localStorage.getItem('mediobot_mock_threads');
       if (saved) {
         const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.some((t) => t.id === 'thread-getting-started-main')) {
+        if (Array.isArray(parsed) && parsed.some((t) => t.id === 'thread-dashboard-vision') && parsed.some((t) => t.id === 'thread-getting-started-maestro')) {
           return parsed;
         }
       }

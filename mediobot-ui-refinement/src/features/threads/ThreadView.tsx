@@ -3,7 +3,7 @@ import { useApp } from '../../state/AppContext';
 import { ActivityItem } from '../activity/ActivityItem';
 import { Composer } from '../composer/Composer';
 import { MarkdownContent } from './MarkdownContent';
-import { Loader2, Image, Paperclip, Copy, Check, X } from 'lucide-react';
+import { Loader2, Image, Paperclip, Copy, Check, X, Users } from 'lucide-react';
 import { EmptyState } from '../empty/EmptyState';
 import { TimelineNavigator } from './TimelineNavigator';
 import { MediobotAvatar } from './MediobotAvatar';
@@ -116,10 +116,15 @@ export const ThreadView: React.FC = () => {
   const isLight = theme === 'light';
 
   // Determine whether this conversation is an individual specialist's separate workspace/chat
-  const cleanSpecId = selectedMediobotId
-    ? normalizeMediobotId(selectedMediobotId)
-    : activeThread?.specialistId
-    ? normalizeMediobotId(activeThread.specialistId)
+  const isTeamThread = activeThread?.threadType === 'team';
+  const cleanSpecId = !isTeamThread
+    ? (selectedMediobotId
+        ? normalizeMediobotId(selectedMediobotId)
+        : activeThread?.specialistId
+        ? normalizeMediobotId(activeThread.specialistId)
+        : (activeThread?.ownerAgent && activeThread.ownerAgent !== 'team')
+        ? normalizeMediobotId(activeThread.ownerAgent)
+        : null)
     : null;
   const isSpecificMediobotChat = Boolean(cleanSpecId);
   const isMainChat = !isSpecificMediobotChat;
@@ -252,7 +257,7 @@ export const ThreadView: React.FC = () => {
         }
       }} data-testid="thread-scroll-root" className="flex-1 overflow-y-auto px-4 py-6 md:px-8 max-w-3xl w-full mx-auto space-y-8">
         {isSpecificMediobotChat && cleanSpecId && (
-          <div className={`p-3.5 rounded-2xl border flex items-center justify-between select-none shadow-2xs mb-4 ${
+          <div data-testid={`specialist-chat-banner-${cleanSpecId}`} className={`p-3.5 rounded-2xl border flex items-center justify-between select-none shadow-2xs mb-4 ${
             isLight
               ? 'bg-[#f8f9fa] border-[#e2e4e8] text-[#18181b]'
               : 'bg-[#18181d] border-[#292832] text-neutral-200'
@@ -270,7 +275,7 @@ export const ThreadView: React.FC = () => {
                     {getMediobotPresentation(cleanSpecId).displayName}
                   </span>
                   <span className={`text-[10px] px-1.5 py-0.5 rounded font-mono ${isLight ? 'bg-black/5 text-neutral-600' : 'bg-white/10 text-neutral-400'}`}>
-                    Direct Mind & Chat
+                    {cleanSpecId === 'maestro' ? 'Team Leader · Direct Chat' : 'Specialist Direct Chat'}
                   </span>
                 </div>
                 <span className={`text-[11px] ${isLight ? 'text-neutral-500' : 'text-neutral-400'}`}>
@@ -278,6 +283,40 @@ export const ThreadView: React.FC = () => {
                 </span>
               </div>
             </div>
+          </div>
+        )}
+        {isMainChat && (
+          <div data-testid="main-team-room-banner" className={`p-3 rounded-2xl border flex items-center justify-between select-none shadow-2xs mb-4 ${
+            isLight
+              ? 'bg-[#f4f6fb] border-[#d8e0f0] text-[#1e293b]'
+              : 'bg-[#151922] border-[#222e44] text-neutral-200'
+          }`}>
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 rounded-full bg-blue-500/20 text-blue-500 flex items-center justify-center shrink-0">
+                <Users className="w-4 h-4" />
+              </div>
+              <div className="flex flex-col">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-semibold">
+                    Main Team · Shared Meeting Room
+                  </span>
+                  <span className={`text-[10px] px-1.5 py-0.5 rounded font-mono ${isLight ? 'bg-blue-100 text-blue-700' : 'bg-blue-950 text-blue-300 border border-blue-800/40'}`}>
+                    Multi-Participant
+                  </span>
+                </div>
+                <span className={`text-[11px] ${isLight ? 'text-neutral-500' : 'text-neutral-400'}`}>
+                  Shared collaboration space for User, Maestro, and recruited specialists
+                </span>
+              </div>
+            </div>
+            {activeThread?.assignedSpecialists && activeThread.assignedSpecialists.length > 0 && (
+              <div className="flex items-center -space-x-1 pl-2">
+                <MediobotAvatar actor={{ type: 'mediobot', mediobotId: 'maestro' }} size="xs" />
+                {activeThread.assignedSpecialists.map((id) => (
+                  <MediobotAvatar key={id} actor={{ type: 'mediobot', mediobotId: id }} size="xs" />
+                ))}
+              </div>
+            )}
           </div>
         )}
         {uniqueTurns.map((turn, turnIdx) => {

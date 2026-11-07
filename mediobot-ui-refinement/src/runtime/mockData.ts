@@ -189,10 +189,10 @@ export const MOCK_THREADS: Thread[] = [
     teamId: 'team-getting-started',
     title: 'Getting Started with Mediobot',
     projectId: 'workspace-demo-1',
-    ownerAgent: 'maestro',
+    ownerAgent: 'team',
     threadType: 'team',
     mode: 'connected_main',
-    agentScope: 'maestro',
+    agentScope: 'team',
     assignedSpecialists: [],
     createdAt: NOW - 12 * HOUR,
     updatedAt: NOW - 11 * HOUR,
@@ -293,6 +293,67 @@ export const MOCK_THREADS: Thread[] = [
       },
     ],
   },
+  // Maestro Direct Chat: Organization & Architectural Advisory
+  {
+    id: 'thread-getting-started-maestro',
+    teamId: 'team-getting-started',
+    title: 'Maestro · Architectural Advisory',
+    projectId: 'workspace-demo-1',
+    ownerAgent: 'maestro',
+    specialistId: 'maestro',
+    threadType: 'mind',
+    mode: 'standalone_specialist',
+    agentScope: 'maestro',
+    assignedSpecialists: ['maestro'],
+    createdAt: NOW - 10 * HOUR,
+    updatedAt: NOW - 9.5 * HOUR,
+    model: 'Gemini 3.6 Flash',
+    turns: [
+      {
+        id: 'turn-gs-maestro-1',
+        threadId: 'thread-getting-started-maestro',
+        prompt: 'How do you coordinate autonomous specialist teams while keeping verification truthful?',
+        status: 'completed',
+        createdAt: NOW - 10 * HOUR,
+        completedAt: NOW - 10 * HOUR + 2400,
+        items: [
+          {
+            id: 'item-gsm-u1',
+            turnId: 'turn-gs-maestro-1',
+            type: 'user_message',
+            actor: { type: 'user', name: 'Lead Architect' },
+            timestamp: NOW - 10 * HOUR,
+            text: 'How do you coordinate autonomous specialist teams while keeping verification truthful?',
+          },
+          {
+            id: 'item-gsm-tool-1',
+            turnId: 'turn-gs-maestro-1',
+            type: 'tool_execution',
+            actor: { type: 'mediobot', mediobotId: 'maestro', name: 'Maestro', role: 'Team orchestration' },
+            timestamp: NOW - 10 * HOUR + 800,
+            tool: {
+              toolName: 'organization.policy_inspect',
+              command: 'organization.policy_inspect --scope verification_gates',
+              status: 'success',
+              output: 'Active policy: Dual-specialist isolation enforced. Builder cannot verify own deliverables.',
+            },
+          },
+          {
+            id: 'item-gsm-m1',
+            turnId: 'turn-gs-maestro-1',
+            type: 'agent_message',
+            actor: { type: 'mediobot', mediobotId: 'maestro', name: 'Maestro', role: 'Team orchestration' },
+            timestamp: NOW - 10 * HOUR + 2400,
+            text: `As the Team Leader, my role is to maintain **rigorous architectural boundaries** across the entire project lifecycle:
+
+1. **Strict Builder-Verifier Separation**: A specialist who writes code (such as Cody) is never permitted to approve or certify that implementation. Verification is assigned exclusively to Tester, who executes assertions independently in a clean sandbox.
+2. **Explicit Observation Provenance**: I reject self-reported claims of completion. Deliverables require real process outputs (terminal exit codes, test report streams, or filesystem diffs).
+3. **Dedicated Communication Channels**: Main Team remains the shared meeting room for whole-team alignment and milestone sign-offs. In this direct channel, you and I can conduct 1-on-1 strategic planning, adjust resource allocations, and define bespoke verification criteria without cluttering the team room.`,
+          },
+        ],
+      },
+    ],
+  },
 
   // --------------------------------------------------------------------------
   // CONVERSATION 2: Autonomous Coding Task
@@ -305,10 +366,10 @@ export const MOCK_THREADS: Thread[] = [
     teamId: 'team-calculator',
     title: 'Build a Calculator Application',
     projectId: 'workspace-demo-1',
-    ownerAgent: 'maestro',
+    ownerAgent: 'team',
     threadType: 'team',
     mode: 'connected_main',
-    agentScope: 'maestro',
+    agentScope: 'team',
     assignedSpecialists: ['cody', 'tester', 'doc'],
     createdAt: NOW - 8 * HOUR,
     updatedAt: NOW - 7 * HOUR,
@@ -383,6 +444,69 @@ Recruiting **Cody**, **Tester**, and **Doc** to this workspace team.`,
 * **Documentation**: Complete \`README.md\` published.
 
 You can inspect Cody's step-by-step implementation, Tester's assertion logs, and Doc's drafts in their respective specialist channels in the sidebar.`,
+          },
+        ],
+      },
+    ],
+  },
+  // Maestro Direct Chat: Calculator Architecture & Task Sequencing
+  {
+    id: 'thread-calculator-maestro',
+    teamId: 'team-calculator',
+    title: 'Maestro · Calculator Task Delegation',
+    projectId: 'workspace-demo-1',
+    ownerAgent: 'maestro',
+    specialistId: 'maestro',
+    threadType: 'mind',
+    mode: 'standalone_specialist',
+    agentScope: 'maestro',
+    assignedSpecialists: ['maestro'],
+    createdAt: NOW - 7.95 * HOUR,
+    updatedAt: NOW - 7.4 * HOUR,
+    model: 'Gemini 3.6 Flash',
+    turns: [
+      {
+        id: 'turn-calc-maestro-1',
+        threadId: 'thread-calculator-maestro',
+        prompt: 'Review the calculator task dependencies, quality gates, and milestone sequencing.',
+        status: 'completed',
+        createdAt: NOW - 7.95 * HOUR,
+        completedAt: NOW - 7.95 * HOUR + 2100,
+        items: [
+          {
+            id: 'item-cm-u1',
+            turnId: 'turn-calc-maestro-1',
+            type: 'user_message',
+            actor: { type: 'user', name: 'Lead Architect' },
+            timestamp: NOW - 7.95 * HOUR,
+            text: 'Review the calculator task dependencies, quality gates, and milestone sequencing.',
+          },
+          {
+            id: 'item-cm-tool-plan',
+            turnId: 'turn-calc-maestro-1',
+            type: 'tool_execution',
+            actor: { type: 'mediobot', mediobotId: 'maestro', name: 'Maestro', role: 'Team orchestration' },
+            timestamp: NOW - 7.95 * HOUR + 600,
+            tool: {
+              toolName: 'maestro.dependency_graph',
+              command: 'maestro.dependency_graph --project calculator-demo',
+              status: 'success',
+              output: 'Milestone 1: Cody [src/calculator.js] -> Milestone 2: Tester [tests/calculator.test.js] -> Milestone 3: Doc [README.md]',
+            },
+          },
+          {
+            id: 'item-cm-m1',
+            turnId: 'turn-calc-maestro-1',
+            type: 'agent_message',
+            actor: { type: 'mediobot', mediobotId: 'maestro', name: 'Maestro', role: 'Team orchestration' },
+            timestamp: NOW - 7.95 * HOUR + 2100,
+            text: `Here is the execution blueprint for the Calculator application:
+
+* **Track A — Implementation (Cody)**: Scaffold pure arithmetic operations with input validation. Specifically mandated: division-by-zero throw guard.
+* **Track B — Verification Gate (Tester)**: Author \`tests/calculator.test.js\` testing nominal and edge boundary conditions. Gate threshold: zero regressions with exit code 0.
+* **Track C — Documentation (Doc)**: Produce API signatures and installation instructions once Track B certifies the build.
+
+I am monitoring the handoff between Cody and Tester. All milestone summaries are being projected to the shared Main Team room.`,
           },
         ],
       },
@@ -624,10 +748,10 @@ You can inspect Cody's step-by-step implementation, Tester's assertion logs, and
     teamId: 'team-research',
     title: 'Research AI Agent Frameworks',
     projectId: 'workspace-demo-1',
-    ownerAgent: 'maestro',
+    ownerAgent: 'team',
     threadType: 'team',
     mode: 'connected_main',
-    agentScope: 'maestro',
+    agentScope: 'team',
     assignedSpecialists: ['research', 'scraapy', 'doc'],
     createdAt: NOW - 5 * HOUR,
     updatedAt: NOW - 4 * HOUR,
@@ -695,6 +819,69 @@ Recruiting **Research**, **Scraapy**, and **Doc**.`,
 | **Semantic Kernel** | Pipeline plugin orchestration | Asynchronous step runners | High | Enterprise ERP / Service integration |
 
 *Full whitepaper published by Doc to \`docs/architecture/framework-comparison.md\`.*`,
+          },
+        ],
+      },
+    ],
+  },
+  // Maestro Direct Chat: Research Scoping & Quality Gates
+  {
+    id: 'thread-research-maestro',
+    teamId: 'team-research',
+    title: 'Maestro · Research Scoping & Quality Gates',
+    projectId: 'workspace-demo-1',
+    ownerAgent: 'maestro',
+    specialistId: 'maestro',
+    threadType: 'mind',
+    mode: 'standalone_specialist',
+    agentScope: 'maestro',
+    assignedSpecialists: ['maestro'],
+    createdAt: NOW - 4.95 * HOUR,
+    updatedAt: NOW - 4.2 * HOUR,
+    model: 'Gemini 3.6 Flash',
+    turns: [
+      {
+        id: 'turn-fr-maestro-1',
+        threadId: 'thread-research-maestro',
+        prompt: 'Scope evaluation criteria and quality gates for the AI agent framework research sprint.',
+        status: 'completed',
+        createdAt: NOW - 4.95 * HOUR,
+        completedAt: NOW - 4.95 * HOUR + 1900,
+        items: [
+          {
+            id: 'item-frm-u1',
+            turnId: 'turn-fr-maestro-1',
+            type: 'user_message',
+            actor: { type: 'user', name: 'Lead Architect' },
+            timestamp: NOW - 4.95 * HOUR,
+            text: 'Scope evaluation criteria and quality gates for the AI agent framework research sprint.',
+          },
+          {
+            id: 'item-frm-tool-1',
+            turnId: 'turn-fr-maestro-1',
+            type: 'tool_execution',
+            actor: { type: 'mediobot', mediobotId: 'maestro', name: 'Maestro', role: 'Team orchestration' },
+            timestamp: NOW - 4.95 * HOUR + 500,
+            tool: {
+              toolName: 'research.scope_dimensions',
+              command: 'research.scope_dimensions --categories ["state_persistence", "latency", "subagent_delegation", "tool_sandboxing"]',
+              status: 'success',
+              output: 'Scoping validated: 4 dimensions defined for comparison against LangGraph, CrewAI, AutoGen.',
+            },
+          },
+          {
+            id: 'item-frm-m1',
+            turnId: 'turn-fr-maestro-1',
+            type: 'agent_message',
+            actor: { type: 'mediobot', mediobotId: 'maestro', name: 'Maestro', role: 'Team orchestration' },
+            timestamp: NOW - 4.95 * HOUR + 1900,
+            text: `I have scoped the research parameters across three parallel streams:
+
+1. **Extraction (Scraapy)**: Crawling raw technical docs, rate-limiting policies, and schema structures.
+2. **Analysis (Research)**: Benchmarking state graph cyclic loop handling, execution latencies, and fault tolerance.
+3. **Consolidation (Doc)**: Formatting a structured decision matrix with actionable recommendations for our engineering team.
+
+I am reviewing Scraapy's crawl yields and will reconcile Research's findings before publishing the final executive synthesis in Main Team.`,
           },
         ],
       },
@@ -842,18 +1029,18 @@ Recruiting **Research**, **Scraapy**, and **Doc**.`,
   // CONVERSATION 4: Parallel Multi-Agent Execution
   // Title: "Develop a Full-Stack Dashboard"
   // Team: team-dashboard
-  // Recruits: ['cody', 'tester', 'research', 'doc']
+  // Recruits: ['cody', 'tester', 'research', 'doc', 'vision']
   // --------------------------------------------------------------------------
   {
     id: 'thread-dashboard-main',
     teamId: 'team-dashboard',
     title: 'Develop a Full-Stack Dashboard',
     projectId: 'workspace-demo-1',
-    ownerAgent: 'maestro',
+    ownerAgent: 'team',
     threadType: 'team',
     mode: 'connected_main',
-    agentScope: 'maestro',
-    assignedSpecialists: ['cody', 'tester', 'research', 'doc'],
+    agentScope: 'team',
+    assignedSpecialists: ['cody', 'tester', 'research', 'doc', 'vision'],
     createdAt: NOW - 3 * HOUR,
     updatedAt: NOW - 1.5 * HOUR,
     model: 'Gemini 3.6 Flash',
@@ -880,32 +1067,58 @@ Recruiting **Research**, **Scraapy**, and **Doc**.`,
             type: 'agent_message',
             actor: { type: 'mediobot', mediobotId: 'maestro', name: 'Maestro', role: 'Team orchestration' },
             timestamp: NOW - 2.95 * HOUR,
-            text: `Initiating parallel multi-specialist delivery workflow:
+            text: `Initiating parallel multi-specialist delivery workflow across 5 specialist tracks:
 
-* **Stage 1 (Concurrent Exploration)**:
+* **Stage 1 (Concurrent Research & Specs)**:
   - **Research**: Benchmarking chart visualization rendering performance (Canvas vs. SVG).
   - **Doc**: Drafting OpenAPI 3.1 specification for analytics metrics endpoints.
-* **Stage 2 (Concurrent Implementation & Verification)**:
+* **Stage 2 (Concurrent Implementation & UI Review)**:
   - **Cody**: Building React dashboard widgets with JWT session protection.
-  - **Tester**: Developing Playwright integration test suite in parallel.
+  - **Vision**: Conducting layout review on rendered mobile and desktop viewports.
+* **Stage 3 (Verification Gate)**:
+  - **Tester**: Developing and running Playwright integration test suite.
 
-Recruiting **Cody**, **Tester**, **Research**, and **Doc** to parallel lanes.`,
+Recruiting **Cody**, **Tester**, **Research**, **Doc**, and **Vision** to active lanes.`,
+          },
+          {
+            id: 'item-dash-research-prog',
+            turnId: 'turn-dash-1',
+            type: 'agent_message',
+            actor: { type: 'mediobot', mediobotId: 'research', name: 'Research', role: 'Web research' },
+            timestamp: NOW - 2.6 * HOUR,
+            text: 'Chart visualization benchmarks complete: Chart.js canvas renderer delivers 58 FPS on low-end test profiles (vs 24 FPS for SVG). Recommended for Cody’s metric chart widget.',
           },
           {
             id: 'item-dash-cody-prog',
             turnId: 'turn-dash-1',
             type: 'agent_message',
-            actor: { type: 'mediobot', mediobotId: 'cody', name: 'Cody' },
+            actor: { type: 'mediobot', mediobotId: 'cody', name: 'Cody', role: 'Software architecture' },
             timestamp: NOW - 2.4 * HOUR,
-            text: 'Implemented `src/components/Dashboard.tsx` and auth middleware in `src/api/auth.ts`.',
+            text: 'Implemented `src/components/Dashboard.tsx` with responsive grid, Canvas KPI chart, and JWT middleware in `src/api/auth.ts`. Build passed cleanly.',
+          },
+          {
+            id: 'item-dash-vision-prog',
+            turnId: 'turn-dash-1',
+            type: 'agent_message',
+            actor: { type: 'mediobot', mediobotId: 'vision', name: 'Vision', role: 'UI inspection & visual review' },
+            timestamp: NOW - 2.2 * HOUR,
+            text: 'Visual inspection complete: Detected 4px tap-target badge overlap on 375px mobile viewports. Cody applied CSS wrap adjustments; layout is now certified pixel-clean.',
           },
           {
             id: 'item-dash-tester-prog',
             turnId: 'turn-dash-1',
             type: 'agent_message',
-            actor: { type: 'mediobot', mediobotId: 'tester', name: 'Tester' },
+            actor: { type: 'mediobot', mediobotId: 'tester', name: 'Tester', role: 'Independent verification' },
             timestamp: NOW - 2.0 * HOUR,
-            text: 'Executed integration test run: 8 passed across authentication and analytics charts.',
+            text: 'Executed integration test run: 8 passed across authentication, session resilience, and analytics charts (`npx playwright test`). Zero regressions.',
+          },
+          {
+            id: 'item-dash-doc-prog',
+            turnId: 'turn-dash-1',
+            type: 'agent_message',
+            actor: { type: 'mediobot', mediobotId: 'doc', name: 'Doc', role: 'Documentation' },
+            timestamp: NOW - 1.8 * HOUR,
+            text: 'Published OpenAPI 3.1 specification at `specs/dashboard-api.yaml` with schema definitions for all 4 metrics endpoints.',
           },
           {
             id: 'item-dash-m2',
@@ -915,10 +1128,74 @@ Recruiting **Cody**, **Tester**, **Research**, and **Doc** to parallel lanes.`,
             timestamp: NOW - 1.5 * HOUR,
             text: `### Verified Deliverable: Full-Stack Dashboard
 
-1. **Frontend**: Responsive KPI metric cards, theme toggling, and interactive canvas charts.
+1. **Frontend**: Responsive KPI metric cards, theme toggling, and interactive canvas charts verified by Vision.
 2. **Backend**: Express API with JWT verification and token refresh route.
 3. **Quality Gates**: All 8 Playwright integration tests passed (exit code 0).
-4. **Documentation**: OpenAPI specification published at \`specs/dashboard-api.yaml\`.`,
+4. **Documentation**: OpenAPI 3.1 specification published at \`specs/dashboard-api.yaml\`.`,
+          },
+        ],
+      },
+    ],
+  },
+  // Maestro Direct Chat: Parallel Sprint Roadmap
+  {
+    id: 'thread-dashboard-maestro',
+    teamId: 'team-dashboard',
+    title: 'Maestro · Parallel Sprint Roadmap',
+    projectId: 'workspace-demo-1',
+    ownerAgent: 'maestro',
+    specialistId: 'maestro',
+    threadType: 'mind',
+    mode: 'standalone_specialist',
+    agentScope: 'maestro',
+    assignedSpecialists: ['maestro'],
+    createdAt: NOW - 2.95 * HOUR,
+    updatedAt: NOW - 1.5 * HOUR,
+    model: 'Gemini 3.6 Flash',
+    turns: [
+      {
+        id: 'turn-dash-maestro-1',
+        threadId: 'thread-dashboard-maestro',
+        prompt: 'How are you sequencing the parallel work streams across Cody, Tester, Research, Doc, and Vision?',
+        status: 'completed',
+        createdAt: NOW - 2.95 * HOUR,
+        completedAt: NOW - 2.95 * HOUR + 2200,
+        items: [
+          {
+            id: 'item-dsm-u1',
+            turnId: 'turn-dash-maestro-1',
+            type: 'user_message',
+            actor: { type: 'user', name: 'Product Lead' },
+            timestamp: NOW - 2.95 * HOUR,
+            text: 'How are you sequencing the parallel work streams across Cody, Tester, Research, Doc, and Vision?',
+          },
+          {
+            id: 'item-dsm-tool-1',
+            turnId: 'turn-dash-maestro-1',
+            type: 'tool_execution',
+            actor: { type: 'mediobot', mediobotId: 'maestro', name: 'Maestro', role: 'Team orchestration' },
+            timestamp: NOW - 2.95 * HOUR + 600,
+            tool: {
+              toolName: 'maestro.lease_scheduler',
+              command: 'maestro.lease_scheduler --concurrency 5 --tracks ["ui", "tests", "benchmarks", "specs", "visual_audit"]',
+              status: 'success',
+              output: 'Leases allocated: 5 concurrent sandboxes operating with read-isolated workspace checkpoints.',
+            },
+          },
+          {
+            id: 'item-dsm-m1',
+            turnId: 'turn-dash-maestro-1',
+            type: 'agent_message',
+            actor: { type: 'mediobot', mediobotId: 'maestro', name: 'Maestro', role: 'Team orchestration' },
+            timestamp: NOW - 2.95 * HOUR + 2200,
+            text: `Our multi-track parallel pipeline executes under strict dependency bounds:
+
+1. **Track 1 & 2 (Research & Doc)**: Kick off first to establish performance ceilings (Research) and interface contracts (Doc).
+2. **Track 3 (Cody)**: Ingests the API contract and chart recommendation to build the UI components and server routes.
+3. **Track 4 (Vision)**: Performs automated headless viewport inspection on Cody's dev server to catch visual clipping before test suites lock in.
+4. **Track 5 (Tester)**: Runs automated Playwright assertions across auth and metrics flows once Vision approves the visual render.
+
+I actively reconcile cross-track findings in real-time so specialists do not block each other while maintaining independent verification gates.`,
           },
         ],
       },
@@ -1097,6 +1374,99 @@ Recruiting **Cody**, **Tester**, **Research**, and **Doc** to parallel lanes.`,
       },
     ],
   },
+  // Specialist Side Chat: Vision for Dashboard
+  {
+    id: 'thread-dashboard-vision',
+    teamId: 'team-dashboard',
+    title: 'Vision · UI Layout Inspection & Visual Review',
+    projectId: 'workspace-demo-1',
+    ownerAgent: 'vision',
+    specialistId: 'vision',
+    threadType: 'mind',
+    mode: 'standalone_specialist',
+    agentScope: 'vision',
+    assignedSpecialists: ['vision'],
+    createdAt: NOW - 2.4 * HOUR,
+    updatedAt: NOW - 1.9 * HOUR,
+    model: 'Gemini 3.6 Flash',
+    turns: [
+      {
+        id: 'turn-dvis-1',
+        threadId: 'thread-dashboard-vision',
+        prompt: 'Inspect rendered dashboard preview for visual clipping, alignment, and mobile viewport issues.',
+        status: 'completed',
+        createdAt: NOW - 2.4 * HOUR,
+        completedAt: NOW - 2.2 * HOUR,
+        items: [
+          {
+            id: 'item-dvis-u1',
+            turnId: 'turn-dvis-1',
+            type: 'user_message',
+            actor: { type: 'user', name: 'Product Lead' },
+            timestamp: NOW - 2.4 * HOUR,
+            text: 'Inspect rendered dashboard preview for visual clipping, alignment, and mobile viewport issues.',
+          },
+          {
+            id: 'item-dvis-tool-1',
+            turnId: 'turn-dvis-1',
+            type: 'tool_execution',
+            actor: { type: 'mediobot', mediobotId: 'vision', name: 'Vision', role: 'UI inspection & visual review' },
+            timestamp: NOW - 2.35 * HOUR,
+            text: 'perception.snapshot --target http://localhost:3000 --viewports ["1280x800", "375x667"]',
+            tool: {
+              toolName: 'perception.snapshot',
+              command: 'perception.snapshot --target http://localhost:3000 --viewports ["1280x800", "375x667"]',
+              status: 'success',
+              startedAt: NOW - 2.35 * HOUR,
+              durationMs: 820,
+              exitCode: 0,
+              outputLog: '✔ Captured 2 rendered viewport frames (Desktop 1280x800, Mobile 375x667). 1 layout overlap detected.',
+            },
+          },
+          {
+            id: 'item-dvis-msg-1',
+            turnId: 'turn-dvis-1',
+            type: 'agent_message',
+            actor: { type: 'mediobot', mediobotId: 'vision', name: 'Vision', role: 'UI inspection & visual review' },
+            timestamp: NOW - 2.3 * HOUR,
+            text: `Visual review report:
+
+1. **Desktop Viewport (1280x800)**: Clean layout alignment. Grid margins match 24px token specifications.
+2. **Mobile Viewport (375x667)**: Detected issue: Metric card trend badge overlaps the KPI title by 4px on narrow widths due to missing \`flex-wrap\`.
+3. **Action Sent to Cody**: Recommended \`flex-wrap: wrap; gap: 0.5rem;\` on \`.metric-header\`.`,
+          },
+          {
+            id: 'item-dvis-peer-1',
+            turnId: 'turn-dvis-1',
+            type: 'peer_message',
+            actor: { type: 'mediobot', mediobotId: 'vision', name: 'Vision' },
+            timestamp: NOW - 2.25 * HOUR,
+            text: 'Cody, please add flex-wrap to .metric-card header to prevent mobile badge clipping.',
+            peerMessage: {
+              messageId: 'peer-vis-cody-1',
+              messageKind: 'finding',
+              scope: 'direct',
+              senderId: 'vision',
+              senderName: 'Vision',
+              recipientId: 'cody',
+              recipientName: 'Cody',
+              sequenceNumber: 1,
+              status: 'delivered',
+              text: 'Cody, please add flex-wrap to .metric-card header to prevent mobile badge clipping.',
+            },
+          },
+          {
+            id: 'item-dvis-msg-2',
+            turnId: 'turn-dvis-1',
+            type: 'agent_message',
+            actor: { type: 'mediobot', mediobotId: 'vision', name: 'Vision', role: 'UI inspection & visual review' },
+            timestamp: NOW - 2.2 * HOUR,
+            text: 'Re-evaluated snapshot after Cody’s patch: Layout certified pixel-clean across both viewports. Verification proof passed to Main Team.',
+          },
+        ],
+      },
+    ],
+  },
 
   // --------------------------------------------------------------------------
   // CONVERSATION 5: Failure, Recovery, and Verification
@@ -1109,10 +1479,10 @@ Recruiting **Cody**, **Tester**, **Research**, and **Doc** to parallel lanes.`,
     teamId: 'team-debug',
     title: 'Debug a Failing Application',
     projectId: 'workspace-demo-1',
-    ownerAgent: 'maestro',
+    ownerAgent: 'team',
     threadType: 'team',
     mode: 'connected_main',
-    agentScope: 'maestro',
+    agentScope: 'team',
     assignedSpecialists: ['cody', 'tester'],
     createdAt: NOW - 75 * MIN,
     updatedAt: NOW - 10 * MIN,
@@ -1183,6 +1553,68 @@ Recruiting **Cody**, **Tester**, **Research**, and **Doc** to parallel lanes.`,
    - Status: **BLOCKED (External Dependency)**
    - Detail: Upstream OAuth provider endpoint \`https://api.auth-upstream.internal/health\` returned \`HTTP 503 Service Unavailable\`.
    - Action Required: External synchronization cannot complete until the upstream authentication server recovers. Not marked as completed.`,
+          },
+        ],
+      },
+    ],
+  },
+  // Maestro Direct Chat: Emergency Triage & Blocker Escalation
+  {
+    id: 'thread-debug-maestro',
+    teamId: 'team-debug',
+    title: 'Maestro · Emergency Triage & Blocker Escalation',
+    projectId: 'workspace-demo-1',
+    ownerAgent: 'maestro',
+    specialistId: 'maestro',
+    threadType: 'mind',
+    mode: 'standalone_specialist',
+    agentScope: 'maestro',
+    assignedSpecialists: ['maestro'],
+    createdAt: NOW - 72 * MIN,
+    updatedAt: NOW - 10 * MIN,
+    model: 'Gemini 3.6 Flash',
+    turns: [
+      {
+        id: 'turn-dbg-maestro-1',
+        threadId: 'thread-debug-maestro',
+        prompt: 'Assess system impact of the auth crash and outline blocker escalation procedures.',
+        status: 'completed',
+        createdAt: NOW - 72 * MIN,
+        completedAt: NOW - 72 * MIN + 1800,
+        items: [
+          {
+            id: 'item-dbgm-u1',
+            turnId: 'turn-dbg-maestro-1',
+            type: 'user_message',
+            actor: { type: 'user', name: 'Site Reliability Lead' },
+            timestamp: NOW - 72 * MIN,
+            text: 'Assess system impact of the auth crash and outline blocker escalation procedures.',
+          },
+          {
+            id: 'item-dbgm-tool-1',
+            turnId: 'turn-dbg-maestro-1',
+            type: 'tool_execution',
+            actor: { type: 'mediobot', mediobotId: 'maestro', name: 'Maestro', role: 'Team orchestration' },
+            timestamp: NOW - 72 * MIN + 500,
+            tool: {
+              toolName: 'incident.blast_radius_audit',
+              command: 'incident.blast_radius_audit --service auth-api --severity SEV-2',
+              status: 'success',
+              output: 'Blast radius contained to incoming unauthenticated requests. Core database and background jobs unaffected.',
+            },
+          },
+          {
+            id: 'item-dbgm-m1',
+            turnId: 'turn-dbg-maestro-1',
+            type: 'agent_message',
+            actor: { type: 'mediobot', mediobotId: 'maestro', name: 'Maestro', role: 'Team orchestration' },
+            timestamp: NOW - 72 * MIN + 1800,
+            text: `Triage evaluation and operational escalation summary:
+
+* **Triage Stage**: Cody isolated the unhandled exception in session token splitting. Hotfix deployed to the test environment.
+* **Verification Stage**: Tester verified null authorization header resilience (100% pass rate).
+* **Escalation**: Tester discovered upstream OAuth 503 during external federated handshake. Under organizational policy, I have logged this external dependency as **BLOCKED** rather than marking the assignment falsely completed.
+* **Next Steps**: Awaiting upstream recovery before executing final production deployment sign-off.`,
           },
         ],
       },
