@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import {
   Terminal as TerminalIcon,
   Plus,
@@ -19,6 +19,7 @@ import {
   Cpu,
 } from 'lucide-react';
 import { useApp } from '../../state/AppContext';
+import { getTerminalSessionsForTeam } from '../../runtime/mockData';
 
 type TabView = 'problems' | 'output' | 'debug' | 'terminal' | 'ports' | 'comments';
 
@@ -56,39 +57,30 @@ const DEFAULT_WELCOME_LINES: TerminalLine[] = [
 ];
 
 export const TerminalWorkspaceView: React.FC<TerminalWorkspaceViewProps> = ({ onClose }) => {
-  const { theme, agents, activeProject, workspaceStatus } = useApp();
+  const { theme, agents, activeProject, workspaceStatus, activeTeamId, activeThread } = useApp();
   const isLight = theme === 'light';
 
   // Active top tab (matches image tabs: Problems, Output, Debug Console, Terminal, Ports, Comments)
   const [activeTab, setActiveTab] = useState<TabView>('terminal');
 
-  // Multi-session state matching the right side panel in the reference image (zsh, zsh, etc.)
-  const [sessions, setSessions] = useState<TerminalSession[]>([
-    {
-      id: 'session-1',
-      name: 'zsh',
-      shell: 'zsh',
-      lines: [...DEFAULT_WELCOME_LINES],
-      history: [],
-      historyIndex: -1,
-    },
-    {
-      id: 'session-2',
-      name: 'zsh',
-      shell: 'zsh',
-      lines: [
-        {
-          id: 's2-welcome',
-          type: 'system',
-          text: 'Z Shell (zsh) multi-terminal session active.',
-        },
-      ],
-      history: [],
-      historyIndex: -1,
-    },
-  ]);
+  const effectiveTeamId = activeTeamId || activeThread?.teamId || 'team-calculator';
+  const initialSessions = useMemo(() => {
+    return getTerminalSessionsForTeam(effectiveTeamId) as TerminalSession[];
+  }, [effectiveTeamId]);
 
-  const [activeSessionId, setActiveSessionId] = useState<string>('session-2');
+  // Multi-session state populated with conversation-specific simulated commands & outputs
+  const [sessions, setSessions] = useState<TerminalSession[]>(initialSessions);
+  const [activeSessionId, setActiveSessionId] = useState<string>(() => initialSessions[0]?.id || 'session-calc-1');
+
+  // Synchronize terminal sessions when conversation / team switches
+  useEffect(() => {
+    const nextSessions = getTerminalSessionsForTeam(effectiveTeamId) as TerminalSession[];
+    setSessions(nextSessions);
+    setActiveSessionId((prev) => {
+      if (nextSessions.some((s) => s.id === prev)) return prev;
+      return nextSessions[0]?.id || 'session-1';
+    });
+  }, [effectiveTeamId]);
   const [inputVal, setInputVal] = useState('');
   const [cursorPos, setCursorPos] = useState<number>(0);
   const [isInputFocused, setIsInputFocused] = useState<boolean>(true);

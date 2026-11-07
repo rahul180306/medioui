@@ -111,16 +111,29 @@ export const SpecialistStatusIndicator: React.FC<{
 };
 
 export const SpecialistDeck: React.FC<{ isLight?: boolean }> = ({ isLight }) => {
-  const { agents, selectedMediobotId, selectAgent, activeThread } = useApp();
+  const { agents, selectedMediobotId, selectAgent, activeThread, threads } = useApp();
 
   const assignedSpecialistIds = useMemo(() => {
     if (!activeThread) return [];
-    if (Array.isArray(activeThread.assignedSpecialists)) {
-      return activeThread.assignedSpecialists;
+    const ids = new Set<string>();
+
+    if (activeThread.assignedSpecialists && Array.isArray(activeThread.assignedSpecialists)) {
+      activeThread.assignedSpecialists.forEach((id) => { if (id && id !== 'maestro') ids.add(id); });
     }
-    // If turns exist and no explicit assignedSpecialists array, infer from active thread turns / owner
+
+    if (activeThread.teamId) {
+      const teamMain = threads.find((t) => (t.teamId === activeThread.teamId || t.id === activeThread.teamId) && (t.ownerAgent === 'maestro' || t.threadType === 'team'));
+      if (teamMain?.assignedSpecialists && Array.isArray(teamMain.assignedSpecialists)) {
+        teamMain.assignedSpecialists.forEach((id) => { if (id && id !== 'maestro') ids.add(id); });
+      }
+    }
+
+    if (ids.size > 0) {
+      return Array.from(ids);
+    }
+
+    // Fallback: infer from turns / owner
     if (activeThread.turns && activeThread.turns.length > 0) {
-      const ids = new Set<string>();
       if (activeThread.ownerAgent && activeThread.ownerAgent !== 'maestro') {
         ids.add(activeThread.ownerAgent);
       }
@@ -142,7 +155,7 @@ export const SpecialistDeck: React.FC<{ isLight?: boolean }> = ({ isLight }) => 
       return [activeThread.specialistId];
     }
     return [];
-  }, [activeThread]);
+  }, [activeThread, threads]);
 
   const deckAgents = useMemo(() => {
     if (assignedSpecialistIds.length === 0) return [];

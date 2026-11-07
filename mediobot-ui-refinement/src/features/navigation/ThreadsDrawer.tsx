@@ -87,8 +87,27 @@ export const ThreadsDrawer: React.FC = () => {
   const activeSpecialistIds = useMemo(() => {
     if (!activeThread) return new Set<string>();
     const ids = new Set<string>();
+
+    if (activeThread.assignedSpecialists && Array.isArray(activeThread.assignedSpecialists)) {
+      for (const id of activeThread.assignedSpecialists) {
+        if (id && id !== 'maestro') ids.add(id.toLowerCase());
+      }
+    }
+
+    if (activeThread.teamId) {
+      const teamMain = threads.find((t) => (t.teamId === activeThread.teamId || t.id === activeThread.teamId) && (t.ownerAgent === 'maestro' || t.threadType === 'team'));
+      if (teamMain?.assignedSpecialists && Array.isArray(teamMain.assignedSpecialists)) {
+        for (const id of teamMain.assignedSpecialists) {
+          if (id && id !== 'maestro') ids.add(id.toLowerCase());
+        }
+      }
+    }
+
     if (activeThread.specialistId && activeThread.specialistId !== 'maestro') {
       ids.add(activeThread.specialistId.toLowerCase());
+    }
+    if (activeThread.ownerAgent && activeThread.ownerAgent !== 'maestro') {
+      ids.add(activeThread.ownerAgent.toLowerCase());
     }
     for (const turn of activeThread.turns) {
       for (const item of turn.items) {
@@ -98,7 +117,7 @@ export const ThreadsDrawer: React.FC = () => {
       }
     }
     return ids;
-  }, [activeThread]);
+  }, [activeThread, threads]);
 
   const displayedSpecialists = useMemo(() => {
     if (activeSpecialistIds.size === 0) return [];

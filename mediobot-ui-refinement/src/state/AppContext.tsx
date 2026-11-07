@@ -1272,9 +1272,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const selectAgent = useCallback((agentId: string | null) => {
     setSelectedMediobotId(agentId);
-    if (activeWorkbenchTab?.kind === 'chat') {
-      return;
-    }
     if (agentId) {
       const cleanId = normalizeMediobotId(agentId);
       if (cleanId === 'maestro') {
@@ -1307,7 +1304,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         openChatTab(maestroThread.id);
       }
     }
-  }, [threads, openChatTab, activeWorkbenchTab, activeTeamId]);
+  }, [threads, openChatTab, activeTeamId]);
 
   useEffect(() => {
     if (!agentRegistryLoaded || !selectedMediobotId || agents.some(agent => agent.id === selectedMediobotId)) return;

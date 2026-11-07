@@ -1,50 +1,32 @@
 import type {
-  Thread,
   ProjectInfo,
   FileNode,
+  Thread,
   ProviderConfig,
   CatalogProviderItem,
-  Turn,
+  MedioBotAgent,
 } from '../types';
-import type { WorkspaceSession, PersistedWorkspaceUIState } from './types';
-
-export const MOCK_SESSION: WorkspaceSession = {
-  workspaceId: 'workspace-dummy-project',
-  canonicalRootPath: '/dummy-project',
-  displayName: 'dummy-project',
-  openedAt: Date.now() - 3600000,
-};
 
 export const MOCK_PROJECTS: ProjectInfo[] = [
   {
-    id: 'workspace-dummy-project',
-    name: 'dummy-project',
-    path: '/dummy-project',
-    branch: 'main',
-    branches: ['main', 'dev'],
-    environment: 'Local',
-  },
-  {
     id: 'workspace-demo-1',
-    name: 'mediobot-demo',
-    path: '/workspace/mediobot-demo',
+    name: 'nik',
+    path: '/Users/rahulkarthikt/Documents/nik',
     branch: 'main',
-    branches: ['main', 'feature/auth-refresh', 'fix/calc-zero'],
-    environment: 'Local',
-  },
-  {
-    id: 'project-web-suite',
-    name: 'web-automation-suite',
-    path: '/workspace/web-automation',
-    branch: 'main',
-    branches: ['main'],
+    branches: ['main', 'feature/calculator', 'feat/dashboard'],
     environment: 'Local',
   },
 ];
 
+export const MOCK_SESSION = {
+  workspaceId: 'workspace-demo-1',
+  canonicalRootPath: '/Users/rahulkarthikt/Documents/nik',
+  displayName: 'nik',
+  openedAt: Date.now() - 86400000,
+};
+
 export const MOCK_FILES: Record<string, string> = {
-  'src/calculator.js': `// Calculator implementation
-export function add(a, b) {
+  'src/calculator.js': `export function add(a, b) {
   return a + b;
 }
 
@@ -63,44 +45,52 @@ export function divide(a, b) {
   return a / b;
 }
 `,
-  'tests/calculator.test.js': `import assert from 'node:assert/strict';
-import test from 'node:test';
+  'tests/calculator.test.js': `import test from 'node:test';
+import assert from 'node:assert/strict';
 import { add, subtract, multiply, divide } from '../src/calculator.js';
 
-test('calculator arithmetic operations', () => {
-  assert.equal(add(2, 2), 4);
-  assert.equal(subtract(5, 3), 2);
-  assert.equal(multiply(3, 3), 9);
-  assert.equal(divide(10, 2), 5);
+test('arithmetic operations', () => {
+  assert.equal(add(2, 3), 5);
+  assert.equal(subtract(10, 4), 6);
+  assert.equal(multiply(6, 7), 42);
+  assert.equal(divide(20, 5), 4);
 });
 
 test('divide by zero guard', () => {
-  assert.throws(() => divide(10, 0), /Division by zero/);
+  assert.throws(() => divide(10, 0), /Division by zero is not allowed/);
 });
 `,
-  'src/index.ts': `import { add, subtract, multiply, divide } from './calculator.js';
-
-console.log('MedioBot Demo Runtime initialized.');
-console.log('Sample calculation: 42 * 2 =', multiply(42, 2));
+  'index.html': `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Calculator Demo</title>
+</head>
+<body>
+  <div id="app"></div>
+  <script type="module" src="./src/calculator.js"></script>
+</body>
+</html>
 `,
   'package.json': `{
-  "name": "mediobot-demo-workspace",
+  "name": "calculator-demo",
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "test": "node --test tests/*.test.js"
+    "test": "node --test tests/calculator.test.js",
+    "build": "vite build",
+    "dev": "vite"
   }
 }
 `,
-  'README.md': `# MedioBot Demo Project
+  'README.md': `# Calculator Application
 
-This is a synthetic mock workspace bundled with the standalone MedioBot V2 Frontend export.
-It allows testing and redesigning all UI features without connecting to a live backend.
+Built autonomously by Mediobot.
 
-## Included Components
-- **File Explorer & Code Editor**: Click on files in the left sidebar to open them in tabs.
-- **Chat & Execution Timeline**: Inspect live tool execution cards, verification badges, and file diffs.
-- **Models & Settings**: Configure AI providers, model toggles, and UI preferences.
+## Features
+- Basic arithmetic (add, subtract, multiply, divide)
+- Division by zero error guards
+- Node.js native test suite
 `,
 };
 
@@ -111,7 +101,6 @@ export const MOCK_FILE_NODES: FileNode[] = [
     type: 'folder',
     children: [
       { name: 'calculator.js', path: 'src/calculator.js', type: 'file' },
-      { name: 'index.ts', path: 'src/index.ts', type: 'file' },
     ],
   },
   {
@@ -122,543 +111,1437 @@ export const MOCK_FILE_NODES: FileNode[] = [
       { name: 'calculator.test.js', path: 'tests/calculator.test.js', type: 'file' },
     ],
   },
+  { name: 'index.html', path: 'index.html', type: 'file' },
   { name: 'package.json', path: 'package.json', type: 'file' },
   { name: 'README.md', path: 'README.md', type: 'file' },
 ];
 
-export const MOCK_THREADS: Thread[] = [
-  {
-    id: 'thread-demo-1',
-    title: 'Fix calculator division by zero defect',
-    projectId: 'workspace-demo-1',
-    createdAt: Date.now() - 7200000,
-    updatedAt: Date.now() - 3600000,
-    model: 'MiniMax-M2.7',
-    modelSelection: { providerConnectionId: 'minimax', providerId: 'minimax', modelId: 'MiniMaxAI/MiniMax-M2.7' },
-    branch: 'main',
-    approvalMode: 'Approve for me',
-    turns: [
-      {
-        id: 'turn-demo-1',
-        threadId: 'thread-demo-1',
-        prompt: 'Fix the division by zero error in calculator.js and verify with tests',
-        status: 'completed',
-        createdAt: Date.now() - 3600000,
-        completedAt: Date.now() - 3590000,
-        items: [
-          {
-            id: 'item-user-1',
-            turnId: 'turn-demo-1',
-            type: 'user_message',
-            actor: { type: 'user', name: 'User' },
-            timestamp: Date.now() - 3600000,
-            text: 'Fix the division by zero error in calculator.js and verify with tests',
-          },
-          {
-            id: 'item-maestro-1',
-            turnId: 'turn-demo-1',
-            type: 'agent_message',
-            actor: { type: 'mediobot', name: 'Maestro', role: 'Team orchestration' },
-            timestamp: Date.now() - 3598000,
-            text: 'I have assigned Cody to inspect `calculator.js`, implement a guarded division check, and verify the fix against `tests/calculator.test.js`.',
-          },
-          {
-            id: 'item-act-1',
-            turnId: 'turn-demo-1',
-            type: 'activity',
-            actor: { type: 'mediobot', name: 'Cody', role: 'Software engineering' },
-            timestamp: Date.now() - 3597000,
-            activityState: 'inspecting',
-            activityLabel: 'Inspecting calculator.js',
-            text: 'Cody inspected calculator.js',
-          },
-          {
-            id: 'item-tool-1',
-            turnId: 'turn-demo-1',
-            type: 'tool_execution',
-            actor: { type: 'mediobot', name: 'Cody', role: 'Software engineering' },
-            timestamp: Date.now() - 3596000,
-            text: 'filesystem.read src/calculator.js',
-            tool: {
-              toolName: 'filesystem.read',
-              command: 'filesystem.read src/calculator.js',
-              status: 'success',
-              startedAt: Date.now() - 3596120,
-              durationMs: 120,
-              outcomeBadge: 'success',
-            },
-          },
-          {
-            id: 'item-diff-1',
-            turnId: 'turn-demo-1',
-            type: 'diff',
-            actor: { type: 'mediobot', name: 'Cody', role: 'Software engineering' },
-            timestamp: Date.now() - 3594000,
-            diff: {
-              filePath: 'src/calculator.js',
-              additions: 3,
-              deletions: 0,
-              hunks: [
-                {
-                  oldStart: 13,
-                  oldLines: 2,
-                  newStart: 13,
-                  newLines: 5,
-                  lines: [
-                    { type: 'context', content: 'export function divide(a, b) {' },
-                    { type: 'add', content: '  if (b === 0) {' },
-                    { type: 'add', content: "    throw new Error('Division by zero is not allowed');" },
-                    { type: 'add', content: '  }' },
-                    { type: 'context', content: '  return a / b;' },
-                    { type: 'context', content: '}' },
-                  ],
-                },
-              ],
-            },
-          },
-          {
-            id: 'item-tool-2',
-            turnId: 'turn-demo-1',
-            type: 'tool_execution',
-            actor: { type: 'mediobot', name: 'Cody', role: 'Software engineering' },
-            timestamp: Date.now() - 3592000,
-            text: 'terminal.execute node --test tests/calculator.test.js',
-            tool: {
-              toolName: 'terminal.execute',
-              command: 'node --test tests/calculator.test.js',
-              status: 'success',
-              startedAt: Date.now() - 3592340,
-              durationMs: 340,
-              isVerification: true,
-              verificationStatus: 'command-succeeded',
-              outcomeBadge: '✓ verified (exit 0)',
-              outputLog: '✔ calculator arithmetic operations (1.2ms)\n✔ divide by zero guard (0.8ms)\n\nℹ tests 2\nℹ suites 0\nℹ pass 2\nℹ fail 0\nℹ duration_ms 42.1',
-            },
-          },
-          {
-            id: 'item-agent-1',
-            turnId: 'turn-demo-1',
-            type: 'agent_message',
-            actor: { type: 'mediobot', name: 'Cody', role: 'Software engineering' },
-            timestamp: Date.now() - 3590000,
-            text: 'I have updated `src/calculator.js` to guard against zero divisors and verified that both arithmetic and error assertions pass deterministically (exit code 0).',
-          },
-        ],
-      },
-    ],
-  },
-  {
-    id: 'thread-demo-2',
-    title: 'Inspect checkout modal flow in browser',
-    projectId: 'workspace-demo-1',
-    createdAt: Date.now() - 14400000,
-    updatedAt: Date.now() - 7200000,
-    model: 'google/diffusiongemma-26b-a4b-it',
-    modelSelection: { providerConnectionId: 'nvidia', providerId: 'nvidia', modelId: 'google/diffusiongemma-26b-a4b-it' },
-    branch: 'main',
-    approvalMode: 'Review changes',
-    turns: [
-      {
-        id: 'turn-demo-2',
-        threadId: 'thread-demo-2',
-        prompt: 'Check if the checkout modal button opens correctly',
-        status: 'completed',
-        createdAt: Date.now() - 7200000,
-        completedAt: Date.now() - 7190000,
-        items: [
-          {
-            id: 'item-user-2',
-            turnId: 'turn-demo-2',
-            type: 'user_message',
-            actor: { type: 'user', name: 'User' },
-            timestamp: Date.now() - 7200000,
-            text: 'Check if the checkout modal button opens correctly',
-          },
-          {
-            id: 'item-act-vis-1',
-            turnId: 'turn-demo-2',
-            type: 'activity',
-            actor: { type: 'mediobot', name: 'Vision', role: 'Browser and visual work' },
-            timestamp: Date.now() - 7198000,
-            activityState: 'running',
-            activityLabel: 'Navigating to localhost:3000/cart',
-            text: 'Vision opened cart page',
-          },
-          {
-            id: 'item-percep-1',
-            turnId: 'turn-demo-2',
-            type: 'perception',
-            actor: { type: 'mediobot', name: 'Vision', role: 'Browser and visual work' },
-            timestamp: Date.now() - 7195000,
-            perception: {
-              focusedApp: 'Chromium',
-              windowTitle: 'Shopping Cart - MedioBot Demo',
-              visualSummary: 'Observed Cart page with 2 items and a primary blue [Proceed to Checkout] button.',
-              confidenceScore: 0.96,
-              detectedElementsCount: 8,
-            },
-            computerAction: {
-              action: 'click',
-              target: 'button#checkout-btn',
-              coordinate: { x: 540, y: 720 },
-              status: 'completed',
-            },
-          },
-          {
-            id: 'item-agent-2',
-            turnId: 'turn-demo-2',
-            type: 'agent_message',
-            actor: { type: 'mediobot', name: 'Vision', role: 'Browser and visual work' },
-            timestamp: Date.now() - 7190000,
-            text: 'The checkout modal launched as expected with payment provider options and order totals verified.',
-          },
-        ],
-      },
-    ],
-  },
-];
-
 export const MOCK_PROVIDERS: ProviderConfig[] = [
   {
-    id: 'dahl',
-    name: 'Dahl',
+    id: 'google-gemini',
+    name: 'Google Gemini',
     type: 'builtin',
-    description: 'High-throughput coding model with advanced reasoning support.',
-    iconType: 'minimax',
-    badge: 'Coding Specialist',
+    iconType: 'gemini',
     connected: true,
     enabled: true,
-    baseUrl: 'https://inference.dahl.global/v1',
     models: [
-      { id: 'MiniMaxAI/MiniMax-M2.7', name: 'MiniMax M2.7', enabled: true, tag: 'Reasoning', context: '128K', description: 'Primary coding agent model', capabilities: { text: true, reasoning: true, vision: false, tools: true, structuredOutput: true, maestroCompatible: true } },
-    ],
-  },
-  {
-    id: 'nvidia',
-    name: 'NVIDIA',
-    type: 'builtin',
-    description: 'Accelerated vision and multimodal perception inference.',
-    iconType: 'nvidia',
-    badge: 'Vision Specialist',
-    connected: true,
-    enabled: true,
-    baseUrl: 'https://integrate.api.nvidia.com/v1',
-    models: [
-      { id: 'google/diffusiongemma-26b-a4b-it', name: 'DiffusionGemma 26B', enabled: true, tag: 'Vision', context: '32K', description: 'Computer control perception', capabilities: { text: true, reasoning: false, vision: true, tools: false, structuredOutput: false, maestroCompatible: false } },
-    ],
-  },
-  {
-    id: 'openai',
-    name: 'OpenAI',
-    type: 'builtin',
-    description: 'Industry-standard language and reasoning models.',
-    iconType: 'openai',
-    badge: 'Popular',
-    connected: false,
-    enabled: false,
-    baseUrl: 'https://api.openai.com/v1',
-    models: [
-      { id: 'gpt-4o', name: 'GPT-4o', enabled: false, tag: 'High Intelligence', description: 'Multimodal flagship model' },
-      { id: 'gpt-4o-mini', name: 'GPT-4o mini', enabled: false, tag: 'Fast', description: 'Lightweight fast model' },
+      { id: 'gemini-3.6-flash', name: 'Gemini 3.6 Flash', enabled: true, tag: 'Default', context: '1M' },
+      { id: 'gemini-3.5-flash-lite', name: 'Gemini 3.5 Flash Lite', enabled: true, tag: 'Fast', context: '1M' },
     ],
   },
   {
     id: 'anthropic',
     name: 'Anthropic',
     type: 'builtin',
-    description: 'Claude models built for safety, steerability, and coding excellence.',
     iconType: 'anthropic',
-    badge: 'Popular',
-    connected: false,
-    enabled: false,
-    baseUrl: 'https://api.anthropic.com/v1',
+    connected: true,
+    enabled: true,
     models: [
-      { id: 'claude-3-5-sonnet-20241022', name: 'Claude 3.5 Sonnet', enabled: false, tag: 'Top Coding', description: 'State-of-the-art coding benchmark' },
+      { id: 'claude-3-7-sonnet', name: 'Claude 3.7 Sonnet', enabled: true, tag: 'Thinking', context: '200K' },
     ],
   },
   {
-    id: 'gemini',
-    name: 'Google Gemini',
+    id: 'deepseek-local',
+    name: 'DeepSeek Local Engine',
     type: 'builtin',
-    description: 'Official Google Gemini models connected with workspace API key.',
-    iconType: 'gemini',
-    badge: 'Connected',
-    connected: true,
-    enabled: true,
-    models: [
-      {
-        id: 'gemini-3.5-flash-lite',
-        name: 'Gemini 3.5 Flash Lite',
-        enabled: true,
-        tag: 'Flash Lite',
-        context: '1M',
-        description: 'Fast, cost-efficient multimodal reasoning and code generation.',
-        capabilities: { text: true, reasoning: true, vision: true, tools: true, structuredOutput: true, maestroCompatible: true },
-      },
-      {
-        id: 'gemini-3.6-flash',
-        name: 'Gemini 3.6 Flash',
-        enabled: true,
-        tag: 'Flash Next',
-        context: '1M',
-        description: 'High-speed intelligence and coding specialist model.',
-        capabilities: { text: true, reasoning: true, vision: true, tools: true, structuredOutput: true, maestroCompatible: true },
-      },
-      {
-        id: 'gemini-3.1-flash-lite',
-        name: 'Gemini 3.1 Flash Lite',
-        enabled: true,
-        tag: 'Lightweight',
-        context: '1M',
-        description: 'Ultra-low latency reasoning and quick workspace edits.',
-        capabilities: { text: true, reasoning: true, vision: true, tools: true, structuredOutput: true, maestroCompatible: true },
-      },
-      {
-        id: 'gemini-3-flash-preview',
-        name: 'Gemini 3 Flash Preview',
-        enabled: true,
-        tag: 'Preview',
-        context: '1M',
-        description: 'Next-generation Gemini Flash preview model for multi-agent reasoning.',
-        capabilities: { text: true, reasoning: true, vision: true, tools: true, structuredOutput: true, maestroCompatible: true },
-      },
-    ],
-  },
-  {
-    id: 'experiential',
-    name: 'Experiential Gateway',
-    type: 'custom',
-    description: 'Experiential Labs gateway speaking OpenAI Chat Completions API with EXPLABS_API_KEY.',
-    iconType: 'openai',
-    badge: 'Gateway',
-    connected: true,
-    enabled: true,
-    baseUrl: 'https://api.experientiallabs.ai/v1',
-    models: [
-      {
-        id: 'deepseek-v4.1-flash',
-        name: 'DeepSeek v4.1 Flash',
-        enabled: true,
-        tag: 'Experiential',
-        context: '128K',
-        description: 'Ultra-fast DeepSeek reasoning routed via Experiential Gateway.',
-        capabilities: { text: true, reasoning: true, vision: false, tools: true, structuredOutput: true, maestroCompatible: true },
-      },
-    ],
-  },
-  {
-    id: 'ollama',
-    name: 'Ollama (Local)',
-    type: 'custom',
-    description: 'Locally hosted open models with zero telemetry.',
     iconType: 'ollama',
-    badge: 'Local',
-    connected: false,
-    enabled: false,
-    baseUrl: 'http://localhost:11434/v1',
+    connected: true,
+    enabled: true,
     models: [
-      { id: 'llama3.3:70b', name: 'Llama 3.3 70B', enabled: false, tag: 'Open Weights' },
+      { id: 'deepseek-r1-local', name: 'DeepSeek R1 (Local)', enabled: true, tag: 'Reasoning', context: '64K' },
     ],
   },
 ];
 
 export const MOCK_CATALOG: CatalogProviderItem[] = [
+  { id: 'google-ai-studio', name: 'Google Gemini API', description: 'Next-gen multimodal reasoning models.', group: 'cloud', iconType: 'gemini' },
+  { id: 'anthropic', name: 'Anthropic Claude', description: 'Advanced coding & agentic capabilities.', group: 'cloud', iconType: 'anthropic' },
+  { id: 'deepseek', name: 'DeepSeek Reasoner', description: 'High-efficiency open reasoning models.', group: 'local', iconType: 'ollama' },
+];
+
+export const MOCK_DEFINITIONS: MedioBotAgent[] = [
+  { id: 'maestro', name: 'Maestro', group: 'orchestrator', role: 'Team orchestration & Goal decomposition', status: 'idle', directConversationAvailable: true },
+  { id: 'cody', name: 'Cody', group: 'specialist', role: 'Software architecture & Implementation', status: 'idle', directConversationAvailable: true },
+  { id: 'tester', name: 'Tester', group: 'specialist', role: 'Independent verification & Quality gates', status: 'idle', directConversationAvailable: true },
+  { id: 'research', name: 'Research', group: 'specialist', role: 'Deep research & Web intelligence', status: 'idle', directConversationAvailable: true },
+  { id: 'doc', name: 'Doc', group: 'specialist', role: 'Documentation & Architecture synthesis', status: 'idle', directConversationAvailable: true },
+  { id: 'scraapy', name: 'Scraapy', group: 'specialist', role: 'Web scraping & Extraction pipeline', status: 'idle', directConversationAvailable: true },
+  { id: 'vision', name: 'Vision', group: 'specialist', role: 'Visual UX inspection & Browser workflows', status: 'development', directConversationAvailable: true },
+];
+
+const NOW = Date.now();
+const MIN = 60 * 1000;
+const HOUR = 60 * MIN;
+
+// ============================================================================
+// THE 5 CANONICAL PRELOADED CONVERSATIONS AND SPECIALIST SESSIONS
+// ============================================================================
+
+export const MOCK_THREADS: Thread[] = [
+  // --------------------------------------------------------------------------
+  // CONVERSATION 1: Normal Maestro Conversation
+  // Title: "Getting Started with Mediobot"
+  // Team: team-getting-started
+  // Assigned: [] (Empty deck; simple greeting must not trigger specialists)
+  // --------------------------------------------------------------------------
   {
-    id: 'experiential',
-    name: 'Experiential Labs',
-    subtitle: 'DeepSeek v4.1 Flash Gateway',
-    badge: 'Gateway',
-    group: 'Open Source',
-    iconType: 'openai',
-    description: 'Routes deepseek-v4.1-flash through https://api.experientiallabs.ai/v1 using EXPLABS_API_KEY.',
-    modelsCount: 1,
-    connected: true,
-  },
-  {
-    id: 'openai',
-    name: 'OpenAI',
-    subtitle: 'GPT-4o, GPT-4o mini, o1',
-    badge: 'Popular',
-    group: 'Popular',
-    iconType: 'openai',
-    requiresApiKey: true,
-    configurableBaseUrl: true,
-    defaultModels: [
-      { id: 'gpt-4o', name: 'GPT-4o', context: '128k', tag: 'Flagship' },
-      { id: 'gpt-4o-mini', name: 'GPT-4o mini', context: '128k', tag: 'Fast' },
-      { id: 'o1', name: 'o1', context: '200k', tag: 'Deep Reasoning' },
+    id: 'thread-getting-started-main',
+    teamId: 'team-getting-started',
+    title: 'Getting Started with Mediobot',
+    projectId: 'workspace-demo-1',
+    ownerAgent: 'maestro',
+    threadType: 'team',
+    mode: 'connected_main',
+    agentScope: 'maestro',
+    assignedSpecialists: [],
+    createdAt: NOW - 12 * HOUR,
+    updatedAt: NOW - 11 * HOUR,
+    model: 'Gemini 3.6 Flash',
+    turns: [
+      {
+        id: 'turn-gs-1',
+        threadId: 'thread-getting-started-main',
+        prompt: 'Hi',
+        status: 'completed',
+        createdAt: NOW - 12 * HOUR,
+        completedAt: NOW - 12 * HOUR + 1200,
+        items: [
+          {
+            id: 'item-gs-u1',
+            turnId: 'turn-gs-1',
+            type: 'user_message',
+            actor: { type: 'user', name: 'Lead Architect' },
+            timestamp: NOW - 12 * HOUR,
+            text: 'Hi',
+          },
+          {
+            id: 'item-gs-m1',
+            turnId: 'turn-gs-1',
+            type: 'agent_message',
+            actor: { type: 'mediobot', mediobotId: 'maestro', name: 'Maestro', role: 'Team orchestration' },
+            timestamp: NOW - 12 * HOUR + 1200,
+            text: 'Hello! I am Maestro, your autonomous AI organization coordinator. How can I assist you with your software projects today?',
+          },
+        ],
+      },
+      {
+        id: 'turn-gs-2',
+        threadId: 'thread-getting-started-main',
+        prompt: 'What can you do?',
+        status: 'completed',
+        createdAt: NOW - 11.5 * HOUR,
+        completedAt: NOW - 11.5 * HOUR + 2400,
+        items: [
+          {
+            id: 'item-gs-u2',
+            turnId: 'turn-gs-2',
+            type: 'user_message',
+            actor: { type: 'user', name: 'Lead Architect' },
+            timestamp: NOW - 11.5 * HOUR,
+            text: 'What can you do?',
+          },
+          {
+            id: 'item-gs-m2',
+            turnId: 'turn-gs-2',
+            type: 'agent_message',
+            actor: { type: 'mediobot', mediobotId: 'maestro', name: 'Maestro', role: 'Team orchestration' },
+            timestamp: NOW - 11.5 * HOUR + 2400,
+            text: `I coordinate an autonomous team of specialized AI agents designed to handle complete engineering lifecycles locally on your machine:
+
+1. **Understand Objectives**: I break down software goals into clear, verifiable technical milestones.
+2. **Assemble Specialist Teams**: Based on your requirements, I recruit specialists from the Mediobots Library:
+   - **Cody**: Software architecture, implementation, refactoring, and build execution.
+   - **Tester**: Independent verification, test suite generation, and regression gates.
+   - **Research**: Framework evaluation, technical precedent discovery, and documentation lookup.
+   - **Doc**: Architecture decision records (ADRs), READMEs, and technical documentation.
+   - **Scraapy**: High-performance web intelligence and documentation extraction.
+3. **Parallel Execution**: Specialists operate concurrently with sandboxed permissions and real tool access.
+4. **Independent Quality Gates**: Implementations must be verified by Tester before being marked complete.`,
+          },
+        ],
+      },
+      {
+        id: 'turn-gs-3',
+        threadId: 'thread-getting-started-main',
+        prompt: 'Explain how your specialist teams work.',
+        status: 'completed',
+        createdAt: NOW - 11 * HOUR,
+        completedAt: NOW - 11 * HOUR + 2800,
+        items: [
+          {
+            id: 'item-gs-u3',
+            turnId: 'turn-gs-3',
+            type: 'user_message',
+            actor: { type: 'user', name: 'Lead Architect' },
+            timestamp: NOW - 11 * HOUR,
+            text: 'Explain how your specialist teams work.',
+          },
+          {
+            id: 'item-gs-m3',
+            turnId: 'turn-gs-3',
+            type: 'agent_message',
+            actor: { type: 'mediobot', mediobotId: 'maestro', name: 'Maestro', role: 'Team orchestration' },
+            timestamp: NOW - 11 * HOUR + 2800,
+            text: `Our architecture enforces **strict organizational separation**:
+
+* **Main Team vs. Side Chats**: This Main Team conversation is where we align on high-level goals and review verified deliverables. Each recruited specialist also maintains an independent, dedicated side-chat channel for focused 1-on-1 collaboration.
+* **Separation of Concerns**: Cody cannot approve his own pull requests or mark tests passed; Tester runs an independent execution sandbox to verify code truth.
+* **Truthful Observation**: Every inspection or test assertion records authentic execution provenance with tool exit codes and output logs rather than hallucinated claims.
+* **Deterministic Isolation**: When you start a simple greeting or general inquiry like this, no background specialists or terminal processes are activated. Specialists are assembled only when an actual technical assignment justifies them.`,
+          },
+        ],
+      },
     ],
   },
+
+  // --------------------------------------------------------------------------
+  // CONVERSATION 2: Autonomous Coding Task
+  // Title: "Build a Calculator Application"
+  // Team: team-calculator
+  // Recruits: ['cody', 'tester', 'doc']
+  // --------------------------------------------------------------------------
   {
-    id: 'anthropic',
-    name: 'Anthropic',
-    subtitle: 'Claude 3.5 Sonnet, Haiku',
-    badge: 'Popular',
-    group: 'Popular',
-    iconType: 'anthropic',
-    requiresApiKey: true,
-    configurableBaseUrl: true,
-    defaultModels: [
-      { id: 'claude-3-5-sonnet-20241022', name: 'Claude 3.5 Sonnet', context: '200k', tag: 'Coding Champion' },
-      { id: 'claude-3-5-haiku-20241022', name: 'Claude 3.5 Haiku', context: '200k', tag: 'Speed' },
+    id: 'thread-calculator-main',
+    teamId: 'team-calculator',
+    title: 'Build a Calculator Application',
+    projectId: 'workspace-demo-1',
+    ownerAgent: 'maestro',
+    threadType: 'team',
+    mode: 'connected_main',
+    agentScope: 'maestro',
+    assignedSpecialists: ['cody', 'tester', 'doc'],
+    createdAt: NOW - 8 * HOUR,
+    updatedAt: NOW - 7 * HOUR,
+    model: 'Gemini 3.6 Flash',
+    turns: [
+      {
+        id: 'turn-calc-1',
+        threadId: 'thread-calculator-main',
+        prompt: 'Build a calculator application with a frontend, backend, and automated tests.',
+        status: 'completed',
+        createdAt: NOW - 8 * HOUR,
+        completedAt: NOW - 7.5 * HOUR,
+        items: [
+          {
+            id: 'item-calc-u1',
+            turnId: 'turn-calc-1',
+            type: 'user_message',
+            actor: { type: 'user', name: 'Lead Architect' },
+            timestamp: NOW - 8 * HOUR,
+            text: 'Build a calculator application with a frontend, backend, and automated tests.',
+          },
+          {
+            id: 'item-calc-m1',
+            turnId: 'turn-calc-1',
+            type: 'agent_message',
+            actor: { type: 'mediobot', mediobotId: 'maestro', name: 'Maestro', role: 'Team orchestration' },
+            timestamp: NOW - 7.9 * HOUR,
+            text: `I have analyzed the objective and formed an autonomous delivery team:
+
+### Delivery Plan
+1. **Architecture & Implementation (Cody)**: Scaffold arithmetic primitives in \`src/calculator.js\` with division-by-zero bounds, plus \`index.html\` UI.
+2. **Independent Verification (Tester)**: Author \`tests/calculator.test.js\` with full edge-case coverage and verify execution.
+3. **Documentation (Doc)**: Prepare \`README.md\` and API usage documentation.
+
+Recruiting **Cody**, **Tester**, and **Doc** to this workspace team.`,
+          },
+          {
+            id: 'item-calc-collab-cody',
+            turnId: 'turn-calc-1',
+            type: 'agent_message',
+            actor: { type: 'mediobot', mediobotId: 'cody', name: 'Cody', role: 'Software architecture' },
+            timestamp: NOW - 7.7 * HOUR,
+            text: 'Implementation complete in `src/calculator.js`. Implemented `add`, `subtract`, `multiply`, and guarded `divide`. Transferred build to Tester for verification.',
+          },
+          {
+            id: 'item-calc-collab-tester',
+            turnId: 'turn-calc-1',
+            type: 'agent_message',
+            actor: { type: 'mediobot', mediobotId: 'tester', name: 'Tester', role: 'Independent verification' },
+            timestamp: NOW - 7.6 * HOUR,
+            text: 'Verified: 14 test cases passed cleanly (`node --test tests/calculator.test.js`). Division by zero guard asserted with exit code 0.',
+          },
+          {
+            id: 'item-calc-collab-doc',
+            turnId: 'turn-calc-1',
+            type: 'agent_message',
+            actor: { type: 'mediobot', mediobotId: 'doc', name: 'Doc', role: 'Documentation' },
+            timestamp: NOW - 7.55 * HOUR,
+            text: 'Synthesized `README.md` with installation commands, test instructions, and API function signatures.',
+          },
+          {
+            id: 'item-calc-m2',
+            turnId: 'turn-calc-1',
+            type: 'agent_message',
+            actor: { type: 'mediobot', mediobotId: 'maestro', name: 'Maestro', role: 'Team orchestration' },
+            timestamp: NOW - 7.5 * HOUR,
+            text: `### Verified Deliverable Summary: Calculator Application
+
+* **Core Engine**: \`src/calculator.js\` exported with \`add\`, \`subtract\`, \`multiply\`, \`divide\`.
+* **Frontend Entry**: \`index.html\` connected to the ESM calculator module.
+* **Independent Quality Proof**: 100% test pass rate in \`tests/calculator.test.js\` (exit code 0).
+* **Documentation**: Complete \`README.md\` published.
+
+You can inspect Cody's step-by-step implementation, Tester's assertion logs, and Doc's drafts in their respective specialist channels in the sidebar.`,
+          },
+        ],
+      },
     ],
   },
+  // Specialist Side Chat: Cody for Calculator
   {
-    id: 'gemini',
-    name: 'Google Gemini',
-    subtitle: 'Gemini 3.5 Flash Lite, 3.6 Flash, 3.1 Flash Lite, 3 Flash Preview',
-    badge: 'Connected',
-    group: 'Popular',
-    iconType: 'gemini',
-    requiresApiKey: true,
-    configurableBaseUrl: false,
-    defaultModels: [
-      { id: 'gemini-3.5-flash-lite', name: 'Gemini 3.5 Flash Lite', context: '1M', tag: 'Flash Lite' },
-      { id: 'gemini-3.6-flash', name: 'Gemini 3.6 Flash', context: '1M', tag: 'Flash Next' },
-      { id: 'gemini-3.1-flash-lite', name: 'Gemini 3.1 Flash Lite', context: '1M', tag: 'Lightweight' },
-      { id: 'gemini-3-flash-preview', name: 'Gemini 3 Flash Preview', context: '1M', tag: 'Preview' },
+    id: 'thread-calculator-cody',
+    teamId: 'team-calculator',
+    title: 'Cody · Calculator Implementation',
+    projectId: 'workspace-demo-1',
+    ownerAgent: 'cody',
+    specialistId: 'cody',
+    threadType: 'mind',
+    mode: 'standalone_specialist',
+    agentScope: 'cody',
+    assignedSpecialists: ['cody'],
+    createdAt: NOW - 7.9 * HOUR,
+    updatedAt: NOW - 7.7 * HOUR,
+    model: 'Claude 3.7 Sonnet',
+    turns: [
+      {
+        id: 'turn-calc-cody-1',
+        threadId: 'thread-calculator-cody',
+        prompt: 'Implement calculator arithmetic core and UI entry point.',
+        status: 'completed',
+        createdAt: NOW - 7.9 * HOUR,
+        completedAt: NOW - 7.7 * HOUR,
+        items: [
+          {
+            id: 'item-cc-1',
+            turnId: 'turn-calc-cody-1',
+            type: 'agent_message',
+            actor: { type: 'mediobot', mediobotId: 'cody', name: 'Cody', role: 'Software architecture' },
+            timestamp: NOW - 7.85 * HOUR,
+            text: 'Assignment accepted from Maestro. Inspecting workspace directory and scaffolding `src/calculator.js`.',
+          },
+          {
+            id: 'item-cc-tool1',
+            turnId: 'turn-calc-cody-1',
+            type: 'tool_execution',
+            actor: { type: 'mediobot', mediobotId: 'cody', name: 'Cody' },
+            timestamp: NOW - 7.82 * HOUR,
+            text: 'filesystem.read package.json',
+            tool: {
+              toolName: 'filesystem.read',
+              command: 'filesystem.read package.json',
+              status: 'success',
+              startedAt: NOW - 7.82 * HOUR,
+              durationMs: 42,
+              output: '{"name": "calculator-demo", "type": "module"}',
+            },
+          },
+          {
+            id: 'item-cc-diff1',
+            turnId: 'turn-calc-cody-1',
+            type: 'diff',
+            actor: { type: 'mediobot', mediobotId: 'cody', name: 'Cody' },
+            timestamp: NOW - 7.78 * HOUR,
+            diff: {
+              filePath: 'src/calculator.js',
+              additions: 19,
+              deletions: 0,
+              lines: [
+                { type: 'add', content: 'export function add(a, b) { return a + b; }', newLineNo: 1 },
+                { type: 'add', content: 'export function subtract(a, b) { return a - b; }', newLineNo: 2 },
+                { type: 'add', content: 'export function multiply(a, b) { return a * b; }', newLineNo: 3 },
+                { type: 'add', content: 'export function divide(a, b) {', newLineNo: 4 },
+                { type: 'add', content: '  if (b === 0) throw new Error("Division by zero is not allowed");', newLineNo: 5 },
+                { type: 'add', content: '  return a / b;', newLineNo: 6 },
+                { type: 'add', content: '}', newLineNo: 7 },
+              ],
+            },
+          },
+          {
+            id: 'item-cc-peer',
+            turnId: 'turn-calc-cody-1',
+            type: 'peer_message',
+            actor: { type: 'mediobot', mediobotId: 'cody', name: 'Cody' },
+            timestamp: NOW - 7.72 * HOUR,
+            text: 'Tester, core arithmetic primitives implemented in `src/calculator.js`. Please build the independent assertion suite.',
+            peerMessage: {
+              messageId: 'peer-cody-calc-1',
+              messageKind: 'finding',
+              scope: 'direct',
+              senderId: 'cody',
+              senderName: 'Cody',
+              recipientId: 'tester',
+              recipientName: 'Tester',
+              sequenceNumber: 1,
+              status: 'delivered',
+              text: 'Tester, core arithmetic primitives implemented in `src/calculator.js`. Please build the independent assertion suite.',
+            },
+          },
+        ],
+      },
     ],
   },
+  // Specialist Side Chat: Tester for Calculator
   {
-    id: 'minimax',
-    name: 'MiniMax',
-    subtitle: 'MiniMax-M2.7',
-    badge: 'Coding Specialist',
-    group: 'Popular',
-    iconType: 'minimax',
-    requiresApiKey: true,
-    configurableBaseUrl: true,
-    defaultModels: [
-      { id: 'MiniMaxAI/MiniMax-M2.7', name: 'MiniMax-M2.7', context: '128k', tag: 'MedioBot Cody' },
+    id: 'thread-calculator-tester',
+    teamId: 'team-calculator',
+    title: 'Tester · Test Verification Suite',
+    projectId: 'workspace-demo-1',
+    ownerAgent: 'tester',
+    specialistId: 'tester',
+    threadType: 'mind',
+    mode: 'standalone_specialist',
+    agentScope: 'tester',
+    assignedSpecialists: ['tester'],
+    createdAt: NOW - 7.75 * HOUR,
+    updatedAt: NOW - 7.6 * HOUR,
+    model: 'Gemini 3.6 Flash',
+    turns: [
+      {
+        id: 'turn-calc-test-1',
+        threadId: 'thread-calculator-tester',
+        prompt: 'Author independent tests and run quality gate for calculator.js.',
+        status: 'completed',
+        createdAt: NOW - 7.75 * HOUR,
+        completedAt: NOW - 7.6 * HOUR,
+        items: [
+          {
+            id: 'item-ct-1',
+            turnId: 'turn-calc-test-1',
+            type: 'agent_message',
+            actor: { type: 'mediobot', mediobotId: 'tester', name: 'Tester', role: 'Independent verification' },
+            timestamp: NOW - 7.74 * HOUR,
+            text: 'Received handover from Cody. Creating independent unit test suite in `tests/calculator.test.js` targeting standard arithmetic and zero-divisor boundaries.',
+          },
+          {
+            id: 'item-ct-diff',
+            turnId: 'turn-calc-test-1',
+            type: 'diff',
+            actor: { type: 'mediobot', mediobotId: 'tester', name: 'Tester' },
+            timestamp: NOW - 7.68 * HOUR,
+            diff: {
+              filePath: 'tests/calculator.test.js',
+              additions: 15,
+              deletions: 0,
+              lines: [
+                { type: 'add', content: 'import test from "node:test";', newLineNo: 1 },
+                { type: 'add', content: 'import assert from "node:assert/strict";', newLineNo: 2 },
+                { type: 'add', content: 'import { add, divide } from "../src/calculator.js";', newLineNo: 3 },
+                { type: 'add', content: 'test("divide by zero guard", () => {', newLineNo: 4 },
+                { type: 'add', content: '  assert.throws(() => divide(10, 0), /Division by zero is not allowed/);', newLineNo: 5 },
+                { type: 'add', content: '});', newLineNo: 6 },
+              ],
+            },
+          },
+          {
+            id: 'item-ct-tool',
+            turnId: 'turn-calc-test-1',
+            type: 'tool_execution',
+            actor: { type: 'mediobot', mediobotId: 'tester', name: 'Tester' },
+            timestamp: NOW - 7.63 * HOUR,
+            text: 'terminal.run node --test tests/calculator.test.js',
+            tool: {
+              toolName: 'terminal.run',
+              command: 'node --test tests/calculator.test.js',
+              status: 'success',
+              startedAt: NOW - 7.63 * HOUR,
+              durationMs: 240,
+              exitCode: 0,
+              isVerification: true,
+              verificationStatus: 'command-succeeded',
+              outcomeBadge: 'VERIFICATION PROOF: ACCEPTED',
+              outputLog: '✔ arithmetic operations (1.2ms)\n✔ divide by zero guard (0.9ms)\nℹ tests 2, pass 2, fail 0',
+            },
+          },
+        ],
+      },
     ],
   },
+  // Specialist Side Chat: Doc for Calculator
   {
-    id: 'nvidia',
-    name: 'NVIDIA NIM',
-    subtitle: 'DiffusionGemma, Llama 3 Vision',
-    badge: 'Vision Specialist',
-    group: 'Popular',
-    iconType: 'nvidia',
-    requiresApiKey: true,
-    configurableBaseUrl: true,
-    defaultModels: [
-      { id: 'google/diffusiongemma-26b-a4b-it', name: 'DiffusionGemma 26B', context: '32k', tag: 'MedioBot Vision' },
+    id: 'thread-calculator-doc',
+    teamId: 'team-calculator',
+    title: 'Doc · Calculator Architecture & API',
+    projectId: 'workspace-demo-1',
+    ownerAgent: 'doc',
+    specialistId: 'doc',
+    threadType: 'mind',
+    mode: 'standalone_specialist',
+    agentScope: 'doc',
+    assignedSpecialists: ['doc'],
+    createdAt: NOW - 7.7 * HOUR,
+    updatedAt: NOW - 7.55 * HOUR,
+    model: 'Gemini 3.5 Flash Lite',
+    turns: [
+      {
+        id: 'turn-calc-doc-1',
+        threadId: 'thread-calculator-doc',
+        prompt: 'Author comprehensive README and API specifications.',
+        status: 'completed',
+        createdAt: NOW - 7.7 * HOUR,
+        completedAt: NOW - 7.55 * HOUR,
+        items: [
+          {
+            id: 'item-cd-1',
+            turnId: 'turn-calc-doc-1',
+            type: 'agent_message',
+            actor: { type: 'mediobot', mediobotId: 'doc', name: 'Doc', role: 'Documentation' },
+            timestamp: NOW - 7.68 * HOUR,
+            text: 'Documenting architecture and usage in `README.md`. Outlining prerequisite commands, exports, and error behavior.',
+          },
+          {
+            id: 'item-cd-diff',
+            turnId: 'turn-calc-doc-1',
+            type: 'diff',
+            actor: { type: 'mediobot', mediobotId: 'doc', name: 'Doc' },
+            timestamp: NOW - 7.6 * HOUR,
+            diff: {
+              filePath: 'README.md',
+              additions: 12,
+              deletions: 0,
+              lines: [
+                { type: 'add', content: '# Calculator Application', newLineNo: 1 },
+                { type: 'add', content: 'Autonomous verified build by Mediobot.', newLineNo: 2 },
+                { type: 'add', content: '### Commands', newLineNo: 3 },
+                { type: 'add', content: '- `npm test`: Runs test suite', newLineNo: 4 },
+                { type: 'add', content: '- `npm run dev`: Starts Vite preview', newLineNo: 5 },
+              ],
+            },
+          },
+        ],
+      },
     ],
   },
+
+  // --------------------------------------------------------------------------
+  // CONVERSATION 3: Research and Collaboration
+  // Title: "Research AI Agent Frameworks"
+  // Team: team-research
+  // Recruits: ['research', 'scraapy', 'doc']
+  // --------------------------------------------------------------------------
   {
-    id: 'ollama',
-    name: 'Ollama',
-    subtitle: 'Local open-source models',
-    badge: 'Local',
-    group: 'Other',
-    iconType: 'ollama',
-    requiresApiKey: false,
-    configurableBaseUrl: true,
-    defaultBaseUrl: 'http://localhost:11434/v1',
-    defaultModels: [
-      { id: 'llama3.3:70b', name: 'Llama 3.3 70B', context: '128k' },
-      { id: 'qwen2.5-coder:32b', name: 'Qwen 2.5 Coder 32B', context: '32k' },
+    id: 'thread-research-main',
+    teamId: 'team-research',
+    title: 'Research AI Agent Frameworks',
+    projectId: 'workspace-demo-1',
+    ownerAgent: 'maestro',
+    threadType: 'team',
+    mode: 'connected_main',
+    agentScope: 'maestro',
+    assignedSpecialists: ['research', 'scraapy', 'doc'],
+    createdAt: NOW - 5 * HOUR,
+    updatedAt: NOW - 4 * HOUR,
+    model: 'Gemini 3.6 Flash',
+    turns: [
+      {
+        id: 'turn-res-1',
+        threadId: 'thread-research-main',
+        prompt: 'Research the best frameworks for building autonomous multi-agent systems and prepare a technical comparison.',
+        status: 'completed',
+        createdAt: NOW - 5 * HOUR,
+        completedAt: NOW - 4.2 * HOUR,
+        items: [
+          {
+            id: 'item-res-u1',
+            turnId: 'turn-res-1',
+            type: 'user_message',
+            actor: { type: 'user', name: 'Lead Architect' },
+            timestamp: NOW - 5 * HOUR,
+            text: 'Research the best frameworks for building autonomous multi-agent systems and prepare a technical comparison.',
+          },
+          {
+            id: 'item-res-m1',
+            turnId: 'turn-res-1',
+            type: 'agent_message',
+            actor: { type: 'mediobot', mediobotId: 'maestro', name: 'Maestro', role: 'Team orchestration' },
+            timestamp: NOW - 4.95 * HOUR,
+            text: `Objective received. Assembling our research swarms:
+
+1. **Research (Intelligence Lead)**: Map architectural paradigms across LangGraph, CrewAI, AutoGen, and Semantic Kernel.
+2. **Scraapy (Extraction Pipeline)**: Retrieve structured documentation, GitHub telemetry, and memory persistence models.
+3. **Doc (Technical Synthesis)**: Produce a publication-grade markdown evaluation matrix in \`docs/architecture/framework-comparison.md\`.
+
+Recruiting **Research**, **Scraapy**, and **Doc**.`,
+          },
+          {
+            id: 'item-res-update-scraapy',
+            turnId: 'turn-res-1',
+            type: 'agent_message',
+            actor: { type: 'mediobot', mediobotId: 'scraapy', name: 'Scraapy', role: 'Web extraction pipeline' },
+            timestamp: NOW - 4.7 * HOUR,
+            text: 'Extracted architectural specifications from 4 framework repositories. Emitted parsed schemas to Research.',
+          },
+          {
+            id: 'item-res-update-research',
+            turnId: 'turn-res-1',
+            type: 'agent_message',
+            actor: { type: 'mediobot', mediobotId: 'research', name: 'Research', role: 'Deep research' },
+            timestamp: NOW - 4.4 * HOUR,
+            text: 'Completed architectural analysis. LangGraph provides cyclic graph state resilience; CrewAI excels at sequential role-playing; AutoGen leads in dynamic group conversation.',
+          },
+          {
+            id: 'item-res-m2',
+            turnId: 'turn-res-1',
+            type: 'agent_message',
+            actor: { type: 'mediobot', mediobotId: 'maestro', name: 'Maestro', role: 'Team orchestration' },
+            timestamp: NOW - 4.2 * HOUR,
+            text: `### Multi-Agent Framework Recommendation Matrix
+
+| Framework | State Architecture | Concurrency Support | Fault Tolerance | Ideal Use Case |
+| :--- | :--- | :--- | :--- | :--- |
+| **LangGraph** | Cyclic graph with checkpointing | Native multi-actor threads | High (Time-travel / SQLite) | Complex autonomous workflows |
+| **CrewAI** | Role-based hierarchical / sequential | Process-pool delegation | Moderate | Standard sequential agency pipelines |
+| **AutoGen** | Conversational group chats | Multi-agent dialogue loops | Moderate (Session state) | Dynamic collaborative brainstorming |
+| **Semantic Kernel** | Pipeline plugin orchestration | Asynchronous step runners | High | Enterprise ERP / Service integration |
+
+*Full whitepaper published by Doc to \`docs/architecture/framework-comparison.md\`.*`,
+          },
+        ],
+      },
     ],
   },
+  // Specialist Side Chat: Research
   {
-    id: 'openrouter',
-    name: 'OpenRouter',
-    subtitle: 'Unified API for 100+ models',
-    badge: 'Aggregator',
-    group: 'Other',
-    iconType: 'openrouter',
-    requiresApiKey: true,
-    configurableBaseUrl: true,
-    defaultModels: [
-      { id: 'anthropic/claude-3.5-sonnet', name: 'Claude 3.5 Sonnet' },
-      { id: 'meta-llama/llama-3.3-70b-instruct', name: 'Llama 3.3 70B' },
+    id: 'thread-research-research',
+    teamId: 'team-research',
+    title: 'Research · Framework Investigation',
+    projectId: 'workspace-demo-1',
+    ownerAgent: 'research',
+    specialistId: 'research',
+    threadType: 'mind',
+    mode: 'standalone_specialist',
+    agentScope: 'research',
+    assignedSpecialists: ['research'],
+    createdAt: NOW - 4.9 * HOUR,
+    updatedAt: NOW - 4.4 * HOUR,
+    model: 'Claude 3.7 Sonnet',
+    turns: [
+      {
+        id: 'turn-rr-1',
+        threadId: 'thread-research-research',
+        prompt: 'Investigate multi-agent framework architectures.',
+        status: 'completed',
+        createdAt: NOW - 4.9 * HOUR,
+        completedAt: NOW - 4.4 * HOUR,
+        items: [
+          {
+            id: 'item-rr-1',
+            turnId: 'turn-rr-1',
+            type: 'agent_message',
+            actor: { type: 'mediobot', mediobotId: 'research', name: 'Research' },
+            timestamp: NOW - 4.85 * HOUR,
+            text: 'Requesting Scraapy to crawl framework documentation and token consumption benchmarks.',
+          },
+          {
+            id: 'item-rr-peer',
+            turnId: 'turn-rr-1',
+            type: 'peer_message',
+            actor: { type: 'mediobot', mediobotId: 'research', name: 'Research' },
+            timestamp: NOW - 4.8 * HOUR,
+            text: 'Scraapy, please fetch state checkpointing specs for LangGraph v0.3 and CrewAI v0.84.',
+            peerMessage: {
+              messageId: 'peer-res-1',
+              messageKind: 'request',
+              scope: 'direct',
+              senderId: 'research',
+              senderName: 'Research',
+              recipientId: 'scraapy',
+              recipientName: 'Scraapy',
+              sequenceNumber: 1,
+              status: 'delivered',
+              text: 'Scraapy, please fetch state checkpointing specs for LangGraph v0.3 and CrewAI v0.84.',
+            },
+          },
+        ],
+      },
     ],
   },
+  // Specialist Side Chat: Scraapy
   {
-    id: 'custom',
-    name: 'Custom OpenAI-Compatible',
-    subtitle: 'Any self-hosted or proxy endpoint',
-    badge: 'Self-Hosted',
-    group: 'Other',
-    iconType: 'custom',
-    requiresApiKey: false,
-    configurableBaseUrl: true,
-    defaultModels: [
-      { id: 'custom-model', name: 'Custom Model' },
+    id: 'thread-research-scraapy',
+    teamId: 'team-research',
+    title: 'Scraapy · Web Documentation Extraction',
+    projectId: 'workspace-demo-1',
+    ownerAgent: 'scraapy',
+    specialistId: 'scraapy',
+    threadType: 'mind',
+    mode: 'standalone_specialist',
+    agentScope: 'scraapy',
+    assignedSpecialists: ['scraapy'],
+    createdAt: NOW - 4.8 * HOUR,
+    updatedAt: NOW - 4.6 * HOUR,
+    model: 'DeepSeek R1 (Local)',
+    turns: [
+      {
+        id: 'turn-rs-1',
+        threadId: 'thread-research-scraapy',
+        prompt: 'Fetch framework documentation and benchmarks.',
+        status: 'completed',
+        createdAt: NOW - 4.8 * HOUR,
+        completedAt: NOW - 4.6 * HOUR,
+        items: [
+          {
+            id: 'item-rs-tool',
+            turnId: 'turn-rs-1',
+            type: 'tool_execution',
+            actor: { type: 'mediobot', mediobotId: 'scraapy', name: 'Scraapy' },
+            timestamp: NOW - 4.75 * HOUR,
+            text: 'scraapy.fetch https://langchain-ai.github.io/langgraph/concepts/persistence/',
+            tool: {
+              toolName: 'scraapy.fetch',
+              command: 'scraapy.fetch https://langchain-ai.github.io/langgraph/concepts/persistence/',
+              status: 'success',
+              startedAt: NOW - 4.75 * HOUR,
+              durationMs: 820,
+              stdoutBytes: 14200,
+              outputLog: '✔ 200 OK. Extracted BaseCheckpointSaver, MemorySaver, and SqliteSaver specs.',
+            },
+          },
+        ],
+      },
+    ],
+  },
+  // Specialist Side Chat: Doc for Research
+  {
+    id: 'thread-research-doc',
+    teamId: 'team-research',
+    title: 'Doc · Comparison Matrix & Whitepaper',
+    projectId: 'workspace-demo-1',
+    ownerAgent: 'doc',
+    specialistId: 'doc',
+    threadType: 'mind',
+    mode: 'standalone_specialist',
+    agentScope: 'doc',
+    assignedSpecialists: ['doc'],
+    createdAt: NOW - 4.6 * HOUR,
+    updatedAt: NOW - 4.2 * HOUR,
+    model: 'Gemini 3.5 Flash Lite',
+    turns: [
+      {
+        id: 'turn-rd-1',
+        threadId: 'thread-research-doc',
+        prompt: 'Compile technical evaluation whitepaper.',
+        status: 'completed',
+        createdAt: NOW - 4.6 * HOUR,
+        completedAt: NOW - 4.2 * HOUR,
+        items: [
+          {
+            id: 'item-rd-1',
+            turnId: 'turn-rd-1',
+            type: 'agent_message',
+            actor: { type: 'mediobot', mediobotId: 'doc', name: 'Doc' },
+            timestamp: NOW - 4.3 * HOUR,
+            text: 'Synthesizing evaluation whitepaper with architecture trade-offs in `docs/architecture/framework-comparison.md`.',
+          },
+        ],
+      },
+    ],
+  },
+
+  // --------------------------------------------------------------------------
+  // CONVERSATION 4: Parallel Multi-Agent Execution
+  // Title: "Develop a Full-Stack Dashboard"
+  // Team: team-dashboard
+  // Recruits: ['cody', 'tester', 'research', 'doc']
+  // --------------------------------------------------------------------------
+  {
+    id: 'thread-dashboard-main',
+    teamId: 'team-dashboard',
+    title: 'Develop a Full-Stack Dashboard',
+    projectId: 'workspace-demo-1',
+    ownerAgent: 'maestro',
+    threadType: 'team',
+    mode: 'connected_main',
+    agentScope: 'maestro',
+    assignedSpecialists: ['cody', 'tester', 'research', 'doc'],
+    createdAt: NOW - 3 * HOUR,
+    updatedAt: NOW - 1.5 * HOUR,
+    model: 'Gemini 3.6 Flash',
+    turns: [
+      {
+        id: 'turn-dash-1',
+        threadId: 'thread-dashboard-main',
+        prompt: 'Build a dashboard application with authentication, analytics, responsive UI, and automated tests.',
+        status: 'completed',
+        createdAt: NOW - 3 * HOUR,
+        completedAt: NOW - 1.5 * HOUR,
+        items: [
+          {
+            id: 'item-dash-u1',
+            turnId: 'turn-dash-1',
+            type: 'user_message',
+            actor: { type: 'user', name: 'Product Lead' },
+            timestamp: NOW - 3 * HOUR,
+            text: 'Build a dashboard application with authentication, analytics, responsive UI, and automated tests.',
+          },
+          {
+            id: 'item-dash-m1',
+            turnId: 'turn-dash-1',
+            type: 'agent_message',
+            actor: { type: 'mediobot', mediobotId: 'maestro', name: 'Maestro', role: 'Team orchestration' },
+            timestamp: NOW - 2.95 * HOUR,
+            text: `Initiating parallel multi-specialist delivery workflow:
+
+* **Stage 1 (Concurrent Exploration)**:
+  - **Research**: Benchmarking chart visualization rendering performance (Canvas vs. SVG).
+  - **Doc**: Drafting OpenAPI 3.1 specification for analytics metrics endpoints.
+* **Stage 2 (Concurrent Implementation & Verification)**:
+  - **Cody**: Building React dashboard widgets with JWT session protection.
+  - **Tester**: Developing Playwright integration test suite in parallel.
+
+Recruiting **Cody**, **Tester**, **Research**, and **Doc** to parallel lanes.`,
+          },
+          {
+            id: 'item-dash-cody-prog',
+            turnId: 'turn-dash-1',
+            type: 'agent_message',
+            actor: { type: 'mediobot', mediobotId: 'cody', name: 'Cody' },
+            timestamp: NOW - 2.4 * HOUR,
+            text: 'Implemented `src/components/Dashboard.tsx` and auth middleware in `src/api/auth.ts`.',
+          },
+          {
+            id: 'item-dash-tester-prog',
+            turnId: 'turn-dash-1',
+            type: 'agent_message',
+            actor: { type: 'mediobot', mediobotId: 'tester', name: 'Tester' },
+            timestamp: NOW - 2.0 * HOUR,
+            text: 'Executed integration test run: 8 passed across authentication and analytics charts.',
+          },
+          {
+            id: 'item-dash-m2',
+            turnId: 'turn-dash-1',
+            type: 'agent_message',
+            actor: { type: 'mediobot', mediobotId: 'maestro', name: 'Maestro', role: 'Team orchestration' },
+            timestamp: NOW - 1.5 * HOUR,
+            text: `### Verified Deliverable: Full-Stack Dashboard
+
+1. **Frontend**: Responsive KPI metric cards, theme toggling, and interactive canvas charts.
+2. **Backend**: Express API with JWT verification and token refresh route.
+3. **Quality Gates**: All 8 Playwright integration tests passed (exit code 0).
+4. **Documentation**: OpenAPI specification published at \`specs/dashboard-api.yaml\`.`,
+          },
+        ],
+      },
+    ],
+  },
+  // Specialist Side Chat: Cody for Dashboard
+  {
+    id: 'thread-dashboard-cody',
+    teamId: 'team-dashboard',
+    title: 'Cody · Dashboard Components & API',
+    projectId: 'workspace-demo-1',
+    ownerAgent: 'cody',
+    specialistId: 'cody',
+    threadType: 'mind',
+    mode: 'standalone_specialist',
+    agentScope: 'cody',
+    assignedSpecialists: ['cody'],
+    createdAt: NOW - 2.9 * HOUR,
+    updatedAt: NOW - 2.2 * HOUR,
+    model: 'Claude 3.7 Sonnet',
+    turns: [
+      {
+        id: 'turn-dc-1',
+        threadId: 'thread-dashboard-cody',
+        prompt: 'Implement responsive dashboard grid and KPI cards.',
+        status: 'completed',
+        createdAt: NOW - 2.9 * HOUR,
+        completedAt: NOW - 2.2 * HOUR,
+        items: [
+          {
+            id: 'item-dc-msg',
+            turnId: 'turn-dc-1',
+            type: 'agent_message',
+            actor: { type: 'mediobot', mediobotId: 'cody', name: 'Cody' },
+            timestamp: NOW - 2.8 * HOUR,
+            text: 'Scaffolding Tailwind grid and MetricCard components in `src/components/Dashboard.tsx`.',
+          },
+          {
+            id: 'item-dc-tool',
+            turnId: 'turn-dc-1',
+            type: 'tool_execution',
+            actor: { type: 'mediobot', mediobotId: 'cody', name: 'Cody' },
+            timestamp: NOW - 2.4 * HOUR,
+            text: 'terminal.run npm run build',
+            tool: {
+              toolName: 'terminal.run',
+              command: 'npm run build',
+              status: 'success',
+              startedAt: NOW - 2.4 * HOUR,
+              durationMs: 1420,
+              exitCode: 0,
+              outputLog: '✔ Built in 1.42s with zero bundle warnings.',
+            },
+          },
+        ],
+      },
+    ],
+  },
+  // Specialist Side Chat: Tester for Dashboard
+  {
+    id: 'thread-dashboard-tester',
+    teamId: 'team-dashboard',
+    title: 'Tester · Integration & Playwright Suite',
+    projectId: 'workspace-demo-1',
+    ownerAgent: 'tester',
+    specialistId: 'tester',
+    threadType: 'mind',
+    mode: 'standalone_specialist',
+    agentScope: 'tester',
+    assignedSpecialists: ['tester'],
+    createdAt: NOW - 2.5 * HOUR,
+    updatedAt: NOW - 1.8 * HOUR,
+    model: 'Gemini 3.6 Flash',
+    turns: [
+      {
+        id: 'turn-dt-1',
+        threadId: 'thread-dashboard-tester',
+        prompt: 'Author Playwright integration tests for dashboard views.',
+        status: 'completed',
+        createdAt: NOW - 2.5 * HOUR,
+        completedAt: NOW - 1.8 * HOUR,
+        items: [
+          {
+            id: 'item-dt-tool',
+            turnId: 'turn-dt-1',
+            type: 'tool_execution',
+            actor: { type: 'mediobot', mediobotId: 'tester', name: 'Tester' },
+            timestamp: NOW - 2.1 * HOUR,
+            text: 'terminal.run npx playwright test',
+            tool: {
+              toolName: 'terminal.run',
+              command: 'npx playwright test',
+              status: 'success',
+              startedAt: NOW - 2.1 * HOUR,
+              durationMs: 3100,
+              exitCode: 0,
+              isVerification: true,
+              verificationStatus: 'command-succeeded',
+              outcomeBadge: 'VERIFICATION PROOF: ACCEPTED',
+              outputLog: '✔ auth.spec.ts (320ms)\n✔ dashboard.spec.ts (410ms)\n✔ analytics.spec.ts (280ms)\n8 passed (1.8s)',
+            },
+          },
+        ],
+      },
+    ],
+  },
+  // Specialist Side Chat: Research for Dashboard
+  {
+    id: 'thread-dashboard-research',
+    teamId: 'team-dashboard',
+    title: 'Research · Chart Library Benchmarking',
+    projectId: 'workspace-demo-1',
+    ownerAgent: 'research',
+    specialistId: 'research',
+    threadType: 'mind',
+    mode: 'standalone_specialist',
+    agentScope: 'research',
+    assignedSpecialists: ['research'],
+    createdAt: NOW - 2.8 * HOUR,
+    updatedAt: NOW - 2.5 * HOUR,
+    model: 'Claude 3.7 Sonnet',
+    turns: [
+      {
+        id: 'turn-dr-1',
+        threadId: 'thread-dashboard-research',
+        prompt: 'Benchmark lightweight charting libraries.',
+        status: 'completed',
+        createdAt: NOW - 2.8 * HOUR,
+        completedAt: NOW - 2.5 * HOUR,
+        items: [
+          {
+            id: 'item-dr-msg',
+            turnId: 'turn-dr-1',
+            type: 'agent_message',
+            actor: { type: 'mediobot', mediobotId: 'research', name: 'Research' },
+            timestamp: NOW - 2.6 * HOUR,
+            text: 'Evaluating bundle sizes: Chart.js (64 KB gzip) vs Recharts (140 KB gzip). Recommending Chart.js canvas renderer for optimal low-end device performance.',
+          },
+        ],
+      },
+    ],
+  },
+  // Specialist Side Chat: Doc for Dashboard
+  {
+    id: 'thread-dashboard-doc',
+    teamId: 'team-dashboard',
+    title: 'Doc · OpenAPI 3.1 & Metrics Spec',
+    projectId: 'workspace-demo-1',
+    ownerAgent: 'doc',
+    specialistId: 'doc',
+    threadType: 'mind',
+    mode: 'standalone_specialist',
+    agentScope: 'doc',
+    assignedSpecialists: ['doc'],
+    createdAt: NOW - 2.6 * HOUR,
+    updatedAt: NOW - 2.0 * HOUR,
+    model: 'Gemini 3.5 Flash Lite',
+    turns: [
+      {
+        id: 'turn-dd-1',
+        threadId: 'thread-dashboard-doc',
+        prompt: 'Draft OpenAPI 3.1 schema for dashboard metrics endpoints.',
+        status: 'completed',
+        createdAt: NOW - 2.6 * HOUR,
+        completedAt: NOW - 2.0 * HOUR,
+        items: [
+          {
+            id: 'item-dd-msg',
+            turnId: 'turn-dd-1',
+            type: 'agent_message',
+            actor: { type: 'mediobot', mediobotId: 'doc', name: 'Doc' },
+            timestamp: NOW - 2.2 * HOUR,
+            text: 'Published OpenAPI specification in `specs/dashboard-api.yaml` detailing `/api/metrics/summary` and `/api/auth/token`.',
+          },
+        ],
+      },
+    ],
+  },
+
+  // --------------------------------------------------------------------------
+  // CONVERSATION 5: Failure, Recovery, and Verification
+  // Title: "Debug a Failing Application"
+  // Team: team-debug
+  // Recruits: ['cody', 'tester']
+  // --------------------------------------------------------------------------
+  {
+    id: 'thread-debug-main',
+    teamId: 'team-debug',
+    title: 'Debug a Failing Application',
+    projectId: 'workspace-demo-1',
+    ownerAgent: 'maestro',
+    threadType: 'team',
+    mode: 'connected_main',
+    agentScope: 'maestro',
+    assignedSpecialists: ['cody', 'tester'],
+    createdAt: NOW - 75 * MIN,
+    updatedAt: NOW - 10 * MIN,
+    model: 'Gemini 3.6 Flash',
+    turns: [
+      {
+        id: 'turn-dbg-1',
+        threadId: 'thread-debug-main',
+        prompt: 'The application is crashing. Investigate the problem, fix it, and verify the solution.',
+        status: 'completed',
+        createdAt: NOW - 75 * MIN,
+        completedAt: NOW - 10 * MIN,
+        items: [
+          {
+            id: 'item-dbg-u1',
+            turnId: 'turn-dbg-1',
+            type: 'user_message',
+            actor: { type: 'user', name: 'Site Reliability Lead' },
+            timestamp: NOW - 75 * MIN,
+            text: 'The application is crashing. Investigate the problem, fix it, and verify the solution.',
+          },
+          {
+            id: 'item-dbg-m1',
+            turnId: 'turn-dbg-1',
+            type: 'agent_message',
+            actor: { type: 'mediobot', mediobotId: 'maestro', name: 'Maestro', role: 'Team orchestration' },
+            timestamp: NOW - 70 * MIN,
+            text: 'Assigning Cody to capture crash telemetry, isolate the root cause, and implement a hotfix. Tester is on standby for regression evaluation.',
+          },
+          {
+            id: 'item-dbg-cody-fail',
+            turnId: 'turn-dbg-1',
+            type: 'agent_message',
+            actor: { type: 'mediobot', mediobotId: 'cody', name: 'Cody' },
+            timestamp: NOW - 55 * MIN,
+            text: 'Reproduced crash: process exits with code 1 due to `TypeError: Cannot read properties of undefined (reading "token")` in `src/auth/session.ts:42`. Diagnosing null authorization header handling.',
+          },
+          {
+            id: 'item-dbg-cody-fix',
+            turnId: 'turn-dbg-1',
+            type: 'agent_message',
+            actor: { type: 'mediobot', mediobotId: 'cody', name: 'Cody' },
+            timestamp: NOW - 35 * MIN,
+            text: 'Applied defensive null check and fallback guest session in `src/auth/session.ts`. Passing hotfix to Tester.',
+          },
+          {
+            id: 'item-dbg-tester-verif',
+            turnId: 'turn-dbg-1',
+            type: 'agent_message',
+            actor: { type: 'mediobot', mediobotId: 'tester', name: 'Tester' },
+            timestamp: NOW - 20 * MIN,
+            text: 'Local regression tests passed. Verified that null or malformed authorization headers no longer crash the process.',
+          },
+          {
+            id: 'item-dbg-m2',
+            turnId: 'turn-dbg-1',
+            type: 'agent_message',
+            actor: { type: 'mediobot', mediobotId: 'maestro', name: 'Maestro', role: 'Team orchestration' },
+            timestamp: NOW - 10 * MIN,
+            text: `### Debugging Report & Resolution Status
+
+1. **Resolved Issue (Local Crash)**:
+   - Root cause: Missing guard on \`req.headers.authorization\` threw an unhandled TypeError.
+   - Fix: Added optional chaining and safe fallback to guest session.
+   - Verification: All local test cases passed cleanly (exit code 0).
+
+2. **Unresolved Blocker (Upstream Dependency)**:
+   - Status: **BLOCKED (External Dependency)**
+   - Detail: Upstream OAuth provider endpoint \`https://api.auth-upstream.internal/health\` returned \`HTTP 503 Service Unavailable\`.
+   - Action Required: External synchronization cannot complete until the upstream authentication server recovers. Not marked as completed.`,
+          },
+        ],
+      },
+    ],
+  },
+  // Specialist Side Chat: Cody for Debug
+  {
+    id: 'thread-debug-cody',
+    teamId: 'team-debug',
+    title: 'Cody · Exception Investigation & Hotfix',
+    projectId: 'workspace-demo-1',
+    ownerAgent: 'cody',
+    specialistId: 'cody',
+    threadType: 'mind',
+    mode: 'standalone_specialist',
+    agentScope: 'cody',
+    assignedSpecialists: ['cody'],
+    createdAt: NOW - 65 * MIN,
+    updatedAt: NOW - 30 * MIN,
+    model: 'Claude 3.7 Sonnet',
+    turns: [
+      {
+        id: 'turn-dbc-1',
+        threadId: 'thread-debug-cody',
+        prompt: 'Isolate crashing stack trace and implement defensive patch.',
+        status: 'completed',
+        createdAt: NOW - 65 * MIN,
+        completedAt: NOW - 30 * MIN,
+        items: [
+          {
+            id: 'item-dbc-tool-fail',
+            turnId: 'turn-dbc-1',
+            type: 'tool_execution',
+            actor: { type: 'mediobot', mediobotId: 'cody', name: 'Cody' },
+            timestamp: NOW - 60 * MIN,
+            text: 'terminal.run npm start',
+            tool: {
+              toolName: 'terminal.run',
+              command: 'npm start',
+              status: 'failed',
+              startedAt: NOW - 60 * MIN,
+              durationMs: 310,
+              exitCode: 1,
+              error: 'TypeError: Cannot read properties of undefined (reading "token")',
+              outputLog: '[FATAL] Process crashed: TypeError: Cannot read properties of undefined (reading "token") at /workspace/src/auth/session.ts:42:28',
+              failureCategory: 'runtime_exception',
+            },
+          },
+          {
+            id: 'item-dbc-diff',
+            turnId: 'turn-dbc-1',
+            type: 'diff',
+            actor: { type: 'mediobot', mediobotId: 'cody', name: 'Cody' },
+            timestamp: NOW - 45 * MIN,
+            diff: {
+              filePath: 'src/auth/session.ts',
+              additions: 8,
+              deletions: 2,
+              lines: [
+                { type: 'context', content: 'export function parseSession(req) {', oldLineNo: 40, newLineNo: 40 },
+                { type: 'remove', content: '- const token = req.headers.authorization.split(" ")[1];', oldLineNo: 41 },
+                { type: 'add', content: '+ const authHeader = req.headers?.authorization;', newLineNo: 41 },
+                { type: 'add', content: '+ if (!authHeader) return createGuestSession();', newLineNo: 42 },
+                { type: 'add', content: '+ const token = authHeader.split(" ")[1];', newLineNo: 43 },
+              ],
+            },
+          },
+          {
+            id: 'item-dbc-tool-retest',
+            turnId: 'turn-dbc-1',
+            type: 'tool_execution',
+            actor: { type: 'mediobot', mediobotId: 'cody', name: 'Cody' },
+            timestamp: NOW - 35 * MIN,
+            text: 'terminal.run npm test',
+            tool: {
+              toolName: 'terminal.run',
+              command: 'npm test',
+              status: 'success',
+              startedAt: NOW - 35 * MIN,
+              durationMs: 190,
+              exitCode: 0,
+              recoveredFromExecution: true,
+              outputLog: '✔ handle undefined authorization header (2.1ms)\n✔ fallback to guest session (1.8ms)\n3 passed, 0 failed',
+            },
+          },
+        ],
+      },
+    ],
+  },
+  // Specialist Side Chat: Tester for Debug
+  {
+    id: 'thread-debug-tester',
+    teamId: 'team-debug',
+    title: 'Tester · Regression & Fuzz Verification',
+    projectId: 'workspace-demo-1',
+    ownerAgent: 'tester',
+    specialistId: 'tester',
+    threadType: 'mind',
+    mode: 'standalone_specialist',
+    agentScope: 'tester',
+    assignedSpecialists: ['tester'],
+    createdAt: NOW - 30 * MIN,
+    updatedAt: NOW - 15 * MIN,
+    model: 'Gemini 3.6 Flash',
+    turns: [
+      {
+        id: 'turn-dbt-1',
+        threadId: 'thread-debug-tester',
+        prompt: 'Verify session resilience against malformed auth payloads.',
+        status: 'completed',
+        createdAt: NOW - 30 * MIN,
+        completedAt: NOW - 15 * MIN,
+        items: [
+          {
+            id: 'item-dbt-tool',
+            turnId: 'turn-dbt-1',
+            type: 'tool_execution',
+            actor: { type: 'mediobot', mediobotId: 'tester', name: 'Tester' },
+            timestamp: NOW - 25 * MIN,
+            text: 'terminal.run node --test tests/session-resilience.test.js',
+            tool: {
+              toolName: 'terminal.run',
+              command: 'node --test tests/session-resilience.test.js',
+              status: 'success',
+              startedAt: NOW - 25 * MIN,
+              durationMs: 410,
+              exitCode: 0,
+              isVerification: true,
+              verificationStatus: 'command-succeeded',
+              outcomeBadge: 'VERIFIED FOR LOCAL SESSION (UPSTREAM BLOCKED)',
+              outputLog: '✔ undefined header handled (1.1ms)\n✔ empty string header handled (0.8ms)\n✔ null token handled (0.9ms)',
+            },
+          },
+        ],
+      },
     ],
   },
 ];
 
-export const MOCK_DEFINITIONS = [
-  {
-    id: 'maestro',
-    name: 'Maestro',
-    group: 'orchestrator' as const,
-    role: 'Team orchestration',
-    summary: 'Delegate work to specialized Mediobots',
-    description: 'Plans and coordinates multi-agent execution',
-    availability: 'available',
-    executable: true,
-  },
-  {
-    id: 'definition-cody',
-    name: 'Cody',
-    group: 'specialist' as const,
-    role: 'Software engineering',
-    summary: 'Inspect, edit, build, and verify project code when assigned by Maestro',
-    description: 'Inspect, edit, build, and verify project code when assigned by Maestro',
-    availability: 'available',
-    executable: true,
-  },
-  {
-    id: 'definition-vision',
-    name: 'Vision',
-    group: 'specialist' as const,
-    role: 'Browser and visual work',
-    summary: 'Structured browser observation and action',
-    description: 'Analyzes visual UI state, browser actions, and screenshots',
-    availability: 'available',
-    executable: true,
-  },
-  {
-    id: 'definition-doc',
-    name: 'Doc',
-    group: 'specialist' as const,
-    role: 'Documentation intelligence',
-    summary: 'Analyze and generate documentation, API references, and architecture guides',
-    description: 'Documentation intelligence and architecture synthesis',
-    availability: 'available',
-    executable: false,
-  },
-  {
-    id: 'definition-research',
-    name: 'Research',
-    group: 'specialist' as const,
-    role: 'Web research',
-    summary: 'Deep research, information retrieval, and synthesis',
-    description: 'Text analysis and web research when assigned by Maestro',
-    availability: 'available',
-    executable: false,
-  },
-  {
-    id: 'definition-tester',
-    name: 'Tester',
-    group: 'specialist' as const,
-    role: 'Independent verification',
-    summary: 'Automated test suite execution and verification',
-    description: 'Independent verification and assertion validation',
-    availability: 'available',
-    executable: false,
-  },
-  {
-    id: 'definition-deployer',
-    name: 'Deployer',
-    group: 'specialist' as const,
-    role: 'Deployment',
-    summary: 'CI/CD pipeline and release deployment operations',
-    description: 'Deployments, preview environments, and release verification',
-    availability: 'available',
-    executable: false,
-  },
-];
+// ============================================================================
+// CONVERSATION-SPECIFIC SIMULATED TERMINAL SESSIONS
+// ============================================================================
 
+export interface MockTerminalLine {
+  id: string;
+  type: 'prompt' | 'stdout' | 'stderr' | 'system' | 'success' | 'warn';
+  text: string;
+  timestamp?: number;
+}
+
+export interface MockTerminalSession {
+  id: string;
+  name: string;
+  shell: 'zsh' | 'bash' | 'mediobot';
+  lines: MockTerminalLine[];
+  history: string[];
+  historyIndex: number;
+}
+
+export const MOCK_TERMINAL_SESSIONS_BY_TEAM: Record<string, MockTerminalSession[]> = {
+  'team-getting-started': [
+    {
+      id: 'session-gs-1',
+      name: 'zsh: sandbox',
+      shell: 'zsh',
+      history: ['mediobot status', 'help'],
+      historyIndex: -1,
+      lines: [
+        { id: 'l-gs-1', type: 'system', text: 'Mediobot Sandbox CLI v2.4.0 (darwin-arm64)' },
+        { id: 'l-gs-2', type: 'prompt', text: 'dev@mediobot-sandbox:~/workspace$ mediobot status' },
+        { id: 'l-gs-3', type: 'stdout', text: 'Mediobot Swarm Engine: IDLE (Standby mode)' },
+        { id: 'l-gs-4', type: 'stdout', text: 'Active Workspace: /Users/rahulkarthikt/Documents/nik' },
+        { id: 'l-gs-5', type: 'stdout', text: 'Active Team: Team 1 (Getting Started with Mediobot)' },
+        { id: 'l-gs-6', type: 'success', text: 'Assigned Specialists: 0 (No background processes spawned)' },
+      ],
+    },
+    {
+      id: 'session-gs-2',
+      name: 'zsh: help',
+      shell: 'zsh',
+      history: ['help'],
+      historyIndex: -1,
+      lines: [
+        { id: 'l-gs-h1', type: 'prompt', text: 'dev@mediobot-sandbox:~/workspace$ help' },
+        { id: 'l-gs-h2', type: 'stdout', text: 'Built-in commands: mediobot status, mediobot list, clear, help' },
+      ],
+    },
+  ],
+
+  'team-calculator': [
+    {
+      id: 'session-calc-1',
+      name: 'npm: install',
+      shell: 'bash',
+      history: ['npm install'],
+      historyIndex: -1,
+      lines: [
+        { id: 'l-c1-1', type: 'prompt', text: 'cody@mediobot:~/workspace$ npm install' },
+        { id: 'l-c1-2', type: 'stdout', text: 'added 42 packages, and audited 43 packages in 1.4s' },
+        { id: 'l-c1-3', type: 'success', text: 'found 0 vulnerabilities' },
+      ],
+    },
+    {
+      id: 'session-calc-2',
+      name: 'npm: test',
+      shell: 'bash',
+      history: ['npm test'],
+      historyIndex: -1,
+      lines: [
+        { id: 'l-c2-1', type: 'prompt', text: 'tester@mediobot:~/workspace$ npm test' },
+        { id: 'l-c2-2', type: 'stdout', text: '> calculator-demo@1.0.0 test\n> node --test tests/calculator.test.js' },
+        { id: 'l-c2-3', type: 'success', text: '✔ arithmetic operations (1.2ms)' },
+        { id: 'l-c2-4', type: 'success', text: '✔ divide by zero guard (0.9ms)' },
+        { id: 'l-c2-5', type: 'stdout', text: 'ℹ tests 2\nℹ pass 2\nℹ fail 0\nℹ duration_ms 48.2' },
+        { id: 'l-c2-6', type: 'success', text: '✔ Test suite passed cleanly (exit code 0)' },
+      ],
+    },
+    {
+      id: 'session-calc-3',
+      name: 'vite: dev',
+      shell: 'bash',
+      history: ['npm run dev'],
+      historyIndex: -1,
+      lines: [
+        { id: 'l-c3-1', type: 'prompt', text: 'dev@mediobot:~/workspace$ npm run dev' },
+        { id: 'l-c3-2', type: 'stdout', text: '> calculator-demo@1.0.0 dev\n> vite --port 5173' },
+        { id: 'l-c3-3', type: 'success', text: '  VITE v6.2.0  ready in 184 ms' },
+        { id: 'l-c3-4', type: 'stdout', text: '  ➜  Local:   http://localhost:5173/' },
+        { id: 'l-c3-5', type: 'stdout', text: '  ➜  Network: use --host to expose' },
+      ],
+    },
+  ],
+
+  'team-research': [
+    {
+      id: 'session-res-1',
+      name: 'scraapy: crawl',
+      shell: 'mediobot',
+      history: ['scraapy fetch --target https://frameworks.benchmarks.internal/agents'],
+      historyIndex: -1,
+      lines: [
+        { id: 'l-r1-1', type: 'system', text: '[Scraapy Worker] Headless Extraction Subsystem Initialized' },
+        { id: 'l-r1-2', type: 'prompt', text: 'scraapy@mediobot:~$ scraapy fetch --target https://frameworks.benchmarks.internal/agents' },
+        { id: 'l-r1-3', type: 'stdout', text: '[2026-11-07 14:10:02] Resolving target: LangGraph, CrewAI, AutoGen, Semantic Kernel' },
+        { id: 'l-r1-4', type: 'stdout', text: '[2026-11-07 14:10:03] Extracted 4 specification schemas (14.2 KB)' },
+        { id: 'l-r1-5', type: 'success', text: '[2026-11-07 14:10:04] Delivered payload to specialist:research (Status: DELIVERED)' },
+      ],
+    },
+    {
+      id: 'session-res-2',
+      name: 'doc: markdown-lint',
+      shell: 'bash',
+      history: ['npx markdownlint docs/research/*.md'],
+      historyIndex: -1,
+      lines: [
+        { id: 'l-r2-1', type: 'prompt', text: 'doc@mediobot:~/workspace$ npx markdownlint docs/research/*.md' },
+        { id: 'l-r2-2', type: 'success', text: '✔ docs/research/agent-frameworks-comparison.md: 0 errors' },
+        { id: 'l-r2-3', type: 'stdout', text: 'All table headers and citation anchors verified.' },
+      ],
+    },
+  ],
+
+  'team-dashboard': [
+    {
+      id: 'session-dash-1',
+      name: 'vite: dashboard-ui',
+      shell: 'bash',
+      history: ['npm run dev -- --port 3000'],
+      historyIndex: -1,
+      lines: [
+        { id: 'l-d1-1', type: 'prompt', text: 'cody@mediobot:~/dashboard$ npm run dev -- --port 3000' },
+        { id: 'l-d1-2', type: 'success', text: '  VITE v6.2.0  ready in 240 ms' },
+        { id: 'l-d1-3', type: 'stdout', text: '  ➜  Local:   http://localhost:3000/' },
+      ],
+    },
+    {
+      id: 'session-dash-2',
+      name: 'test: playwright',
+      shell: 'bash',
+      history: ['npx playwright test'],
+      historyIndex: -1,
+      lines: [
+        { id: 'l-d2-1', type: 'prompt', text: 'tester@mediobot:~/dashboard$ npx playwright test' },
+        { id: 'l-d2-2', type: 'stdout', text: 'Running 8 tests using 4 workers' },
+        { id: 'l-d2-3', type: 'success', text: '  ✓ auth.spec.ts:12: login with valid credentials (320ms)' },
+        { id: 'l-d2-4', type: 'success', text: '  ✓ auth.spec.ts:28: reject invalid JWT token (140ms)' },
+        { id: 'l-d2-5', type: 'success', text: '  ✓ dashboard.spec.ts:15: render active KPI metrics (410ms)' },
+        { id: 'l-d2-6', type: 'success', text: '  ✓ dashboard.spec.ts:35: toggle dark/light theme (190ms)' },
+        { id: 'l-d2-7', type: 'success', text: '8 passed (1.8s)' },
+      ],
+    },
+    {
+      id: 'session-dash-3',
+      name: 'api: backend',
+      shell: 'bash',
+      history: ['node dist/server.js'],
+      historyIndex: -1,
+      lines: [
+        { id: 'l-d3-1', type: 'prompt', text: 'dev@mediobot:~/dashboard$ node dist/server.js' },
+        { id: 'l-d3-2', type: 'stdout', text: '[Auth Service] JWT public key loaded' },
+        { id: 'l-d3-3', type: 'stdout', text: '[Analytics API] listening on port 4000' },
+      ],
+    },
+  ],
+
+  'team-debug': [
+    {
+      id: 'session-dbg-1',
+      name: 'bash: crash-log',
+      shell: 'bash',
+      history: ['npm start'],
+      historyIndex: -1,
+      lines: [
+        { id: 'l-db1-1', type: 'prompt', text: 'cody@mediobot:~/app$ npm start' },
+        { id: 'l-db1-2', type: 'stdout', text: '> production-api@2.0.0 start\n> node dist/index.js' },
+        { id: 'l-db1-3', type: 'stderr', text: '[ERROR] 14:22:01 UnhandledPromiseRejection:' },
+        { id: 'l-db1-4', type: 'stderr', text: 'TypeError: Cannot read properties of undefined (reading "token")' },
+        { id: 'l-db1-5', type: 'stderr', text: '    at validateSession (/workspace/src/auth/session.ts:42:28)' },
+        { id: 'l-db1-6', type: 'stderr', text: '    at authenticateRequest (/workspace/src/middleware/auth.ts:18:12)' },
+        { id: 'l-db1-7', type: 'warn', text: '[FATAL] Process exited with code 1' },
+      ],
+    },
+    {
+      id: 'session-dbg-2',
+      name: 'bash: recovery-retest',
+      shell: 'bash',
+      history: ['npm test'],
+      historyIndex: -1,
+      lines: [
+        { id: 'l-db2-1', type: 'prompt', text: 'cody@mediobot:~/app$ npm test' },
+        { id: 'l-db2-2', type: 'stdout', text: '> test\n> node --test tests/session-resilience.test.js' },
+        { id: 'l-db2-3', type: 'success', text: '✔ handle undefined authorization header gracefully (2.1ms)' },
+        { id: 'l-db2-4', type: 'success', text: '✔ fallback to guest session when token is null (1.8ms)' },
+        { id: 'l-db2-5', type: 'success', text: '✔ validate valid bearer JWT token (3.4ms)' },
+        { id: 'l-db2-6', type: 'success', text: '✔ Local session crash resolved (exit code 0)' },
+      ],
+    },
+    {
+      id: 'session-dbg-3',
+      name: 'bash: upstream-health',
+      shell: 'bash',
+      history: ['curl -I https://api.auth-upstream.internal/health'],
+      historyIndex: -1,
+      lines: [
+        { id: 'l-db3-1', type: 'prompt', text: 'dev@mediobot:~/app$ curl -I https://api.auth-upstream.internal/health' },
+        { id: 'l-db3-2', type: 'stderr', text: 'HTTP/2 503 Service Unavailable' },
+        { id: 'l-db3-3', type: 'stderr', text: 'content-type: application/json' },
+        { id: 'l-db3-4', type: 'stderr', text: 'retry-after: 300' },
+        { id: 'l-db3-5', type: 'warn', text: '{"status": "degraded", "error": "upstream database timeout"}' },
+        { id: 'l-db3-6', type: 'warn', text: '[STATUS: BLOCKED] Upstream provider is temporarily offline.' },
+      ],
+    },
+  ],
+};
+
+export function getTerminalSessionsForTeam(teamId?: string | null): MockTerminalSession[] {
+  if (teamId && MOCK_TERMINAL_SESSIONS_BY_TEAM[teamId]) {
+    return MOCK_TERMINAL_SESSIONS_BY_TEAM[teamId];
+  }
+  // Default fallback
+  return MOCK_TERMINAL_SESSIONS_BY_TEAM['team-calculator'] || [];
+}
