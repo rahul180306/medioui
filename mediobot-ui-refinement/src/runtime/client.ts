@@ -10,7 +10,26 @@ import type {
   RuntimeSpecialistGroupHistory,
 } from "./types";
 import type { FileNode, ProjectInfo, Thread } from "../types";
-import { MockMediobotRuntime } from "./mockClient.ts";
+import { OfflineFixtureRuntime } from "./offlineFixture.js";
+import {
+  installNetworkGuard,
+  isPermittedRequest,
+  setNetworkGuardDevMode,
+  isDevMode,
+  extractUrlString,
+  extractMethod,
+  createBlockedResponse,
+  defineFrozenProperty,
+  createSecurityError,
+  validateStreamingDestination,
+  GuardedEventSource,
+  GuardedWebSocket,
+} from "./networkGuard.ts";
+import type {
+  AuthorizationResult,
+  AuthorizationContext,
+  NetworkGuardOptions,
+} from "./networkGuard.ts";
 
 type Listener = (event: RuntimeEvent) => void;
 type WorkspaceListener = (event: {
@@ -56,6 +75,7 @@ function sessionToProject(session: WorkspaceSession): ProjectInfo {
 
 /** Real backend client connecting to a live Mediobot V2 server over HTTP & SSE. */
 export class MediobotRuntimeClient implements IMediobotRuntime {
+  readonly runtimeKind = "backend" as const;
   private readonly listeners = new Set<Listener>();
   private readonly workspaceListeners = new Set<WorkspaceListener>();
   private readonly streams = new Map<string, EventSource>();
@@ -148,6 +168,12 @@ export class MediobotRuntimeClient implements IMediobotRuntime {
       body: JSON.stringify({ thread: metadata }),
     });
     return result.thread;
+  }
+
+  async saveThreadsAtomic(threads: Thread[]): Promise<void> {
+    for (const thread of threads) {
+      await this.saveThread(thread);
+    }
   }
 
   async deleteThread(threadId: string): Promise<void> {
@@ -370,13 +396,37 @@ export class MediobotRuntimeClient implements IMediobotRuntime {
 }
 
 /**
- * Flag determining whether to use the standalone synthetic mock runtime or connect to a real backend.
- * Connected to live MedioBot V2 backend by default.
+ * Flag determining whether to use the safe deterministic offline fixture or connect to a real backend.
+ * Uses safe offline fixture by default (zero external network, zero shell execution, zero host file mutations).
  */
-export const USE_MOCK_RUNTIME = true;
+export const USE_OFFLINE_FIXTURE = true;
 
-export const runtimeInstance: IMediobotRuntime = USE_MOCK_RUNTIME
-  ? new MockMediobotRuntime()
+export const runtimeInstance: IMediobotRuntime = USE_OFFLINE_FIXTURE
+  ? new OfflineFixtureRuntime()
   : new MediobotRuntimeClient();
 
-export { MockMediobotRuntime };
+if (typeof window !== "undefined" && USE_OFFLINE_FIXTURE) {
+  installNetworkGuard(window);
+}
+
+export {
+  OfflineFixtureRuntime,
+  installNetworkGuard,
+  isPermittedRequest,
+  setNetworkGuardDevMode,
+  isDevMode,
+  extractUrlString,
+  extractMethod,
+  createBlockedResponse,
+  defineFrozenProperty,
+  createSecurityError,
+  validateStreamingDestination,
+  GuardedEventSource,
+  GuardedWebSocket,
+};
+
+export type {
+  AuthorizationResult,
+  AuthorizationContext,
+  NetworkGuardOptions,
+};

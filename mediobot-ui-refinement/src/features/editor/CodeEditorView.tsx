@@ -5,7 +5,7 @@ import { EditorView, keymap, lineNumbers, highlightActiveLine, highlightActiveLi
 import { defaultKeymap, history, historyKeymap } from '@codemirror/commands';
 import { bracketMatching, foldGutter } from '@codemirror/language';
 import { useApp } from '../../state/AppContext';
-import { runtimeInstance } from '../../runtime/client';
+import { runtimeInstance, USE_OFFLINE_FIXTURE } from '../../runtime/client';
 import { FileIcon } from '../../components/icons/FileIcon';
 import { resolveEditorLanguage } from './languageResolver';
 import { getMediobotSyntaxTheme } from './editorTheme';
@@ -22,7 +22,7 @@ export const DEFAULT_AUTOSAVE_CONFIG: AutoSaveConfig = {
   delayMs: 1000,
 };
 
-export type SaveStatus = 'Saved' | 'Editing...' | 'Saving...' | 'Conflict' | 'Error';
+export type SaveStatus = 'Saved' | 'Saved (Isolated Fixture)' | 'Editing...' | 'Saving...' | 'Conflict' | 'Error';
 
 export const CodeEditorView: React.FC = () => {
   const { activeTabPath, activeProject, closeFileTab, lastFsEvent, theme } = useApp();
@@ -46,6 +46,13 @@ export const CodeEditorView: React.FC = () => {
   activeKey.current = currentKey;
   const saving = savingKey === currentKey;
 
+  const getResolvedSavedStatus = useCallback((h?: string): SaveStatus => {
+    if (USE_OFFLINE_FIXTURE || (h && (h.includes('simulated') || h.includes('[SIMULATED]')))) {
+      return 'Saved (Isolated Fixture)';
+    }
+    return 'Saved';
+  }, []);
+
   const editorContainerRef = useRef<HTMLDivElement>(null);
   const editorViewRef = useRef<EditorView | null>(null);
   const languageCompartment = useRef(new Compartment());
@@ -67,7 +74,7 @@ export const CodeEditorView: React.FC = () => {
       setSavedContent('');
       setHash('');
       setLoadedKey(currentKey);
-      setSaveStatus('Saved');
+      setSaveStatus(getResolvedSavedStatus());
       return;
     }
 
@@ -79,7 +86,7 @@ export const CodeEditorView: React.FC = () => {
       setHash(result.hash);
       setLineCount(result.content.split('\n').length);
       setLoadedKey(`${activeProject.id}\0${activeTabPath}`);
-      setSaveStatus('Saved');
+      setSaveStatus(getResolvedSavedStatus(result.hash));
 
       // Initialize or update CodeMirror
       if (editorViewRef.current) {
@@ -103,7 +110,7 @@ export const CodeEditorView: React.FC = () => {
     } finally {
       if (sequence === requestSequence.current) setLoading(false);
     }
-  }, [activeProject.id, activeTabPath, currentKey, resolution?.isBinary]);
+  }, [activeProject.id, activeTabPath, currentKey, getResolvedSavedStatus, resolution?.isBinary]);
 
   useEffect(() => {
     void load();
@@ -113,7 +120,7 @@ export const CodeEditorView: React.FC = () => {
   const save = useCallback(async () => {
     if (!activeTabPath || !activeProject.id || loadedKey !== currentKey || saving || !hash) return;
     if (content === savedContent) {
-      setSaveStatus('Saved');
+      setSaveStatus(getResolvedSavedStatus(hash));
       return;
     }
 
@@ -132,7 +139,7 @@ export const CodeEditorView: React.FC = () => {
       if (activeKey.current === saveKey) {
         setHash(nextHash);
         setSavedContent(content);
-        setSaveStatus('Saved');
+        setSaveStatus(getResolvedSavedStatus(nextHash));
       }
     } catch (cause) {
       if (activeKey.current === saveKey) {
@@ -144,7 +151,7 @@ export const CodeEditorView: React.FC = () => {
     } finally {
       setSavingKey((current) => (current === saveKey ? '' : current));
     }
-  }, [activeProject.id, activeTabPath, content, currentKey, hash, loadedKey, savedContent, saving]);
+  }, [activeProject.id, activeTabPath, content, currentKey, getResolvedSavedStatus, hash, loadedKey, savedContent, saving]);
 
   // Handle external filesystem events
   useEffect(() => {
@@ -169,7 +176,7 @@ export const CodeEditorView: React.FC = () => {
 
   // Central Auto Save orchestration
   useEffect(() => {
-    if (!DEFAULT_AUTOSAVE_CONFIG.enabled || !dirty || saving || !hash || loading || loadedKey !== currentKey) {
+    if (!DEFAULT_AUTOSAVE_CONFIG.enabled || !dirty || saving || !hash || loading || loadedKey !== currentKey || error || saveStatus === 'Error') {
       return;
     }
 
@@ -190,7 +197,7 @@ export const CodeEditorView: React.FC = () => {
         autoSaveTimerRef.current = null;
       }
     };
-  }, [content, dirty, saving, hash, loading, loadedKey, currentKey, save]);
+  }, [content, dirty, saving, hash, loading, loadedKey, currentKey, save, error, saveStatus]);
 
   // Setup CodeMirror instance
   useEffect(() => {
@@ -235,6 +242,13 @@ export const CodeEditorView: React.FC = () => {
     });
 
     editorViewRef.current = view;
+    if (editorContainerRef.current) {
+      (editorContainerRef.current as any).__cmView = view;
+    }
+    if (view.dom) {
+      (view.dom as any).__cmView = view;
+      (view.dom as any).cmView = { view };
+    }
 
     return () => {
       view.destroy();
@@ -328,7 +342,7 @@ export const CodeEditorView: React.FC = () => {
           )}
         </div>
         <div className="flex items-center gap-2">
-          {!loading && !error && !resolution?.isBinary && (
+          {!loading && !resolution?.isBinary && (
             <>
               <button
                 onClick={copy}
@@ -399,7 +413,7 @@ export const CodeEditorView: React.FC = () => {
                     setHash(latest.hash);
                     setSavedContent(content);
                     setError('');
-                    setSaveStatus('Saved');
+                    setSaveStatus(getResolvedSavedStatus(latest.hash));
                   } catch (e) {
                     setError(e instanceof Error ? e.message : 'Overwrite failed.');
                   }
@@ -437,19 +451,37 @@ export const CodeEditorView: React.FC = () => {
         <span className="truncate max-w-[50%]">{activeProject.name}</span>
         <div className="flex items-center gap-3">
           <span className="flex items-center gap-1.5">
-            {saveStatus === 'Saved' && <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />}
+            {(saveStatus === 'Saved' || saveStatus === 'Saved (Isolated Fixture)') && (
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+            )}
             {saveStatus === 'Editing...' && <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />}
             {saveStatus === 'Saving...' && <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-ping" />}
             {saveStatus === 'Conflict' && <span className="w-1.5 h-1.5 rounded-full bg-rose-500" />}
             {saveStatus === 'Error' && <span className="w-1.5 h-1.5 rounded-full bg-rose-600" />}
-            <span className={
-              saveStatus === 'Conflict' ? 'text-rose-500 font-medium' :
-              saveStatus === 'Error' ? 'text-rose-500' :
-              saveStatus === 'Editing...' ? (isLight ? 'text-amber-700' : 'text-amber-300') :
-              saveStatus === 'Saving...' ? (isLight ? 'text-blue-600' : 'text-blue-300') :
-              isLight ? 'text-[#374151]' : 'text-neutral-400'
-            }>
+            <span
+              data-testid="editor-save-status"
+              className={
+                saveStatus === 'Conflict' ? 'text-rose-500 font-medium' :
+                saveStatus === 'Error' ? 'text-rose-500' :
+                saveStatus === 'Editing...' ? (isLight ? 'text-amber-700' : 'text-amber-300') :
+                saveStatus === 'Saving...' ? (isLight ? 'text-blue-600' : 'text-blue-300') :
+                isLight ? 'text-[#374151]' : 'text-neutral-400'
+              }
+              title={
+                saveStatus === 'Saved (Isolated Fixture)'
+                  ? 'Changes saved to isolated fixture storage. Host files remain untouched.'
+                  : undefined
+              }
+            >
               {saveStatus}
+              {saveStatus === 'Saved (Isolated Fixture)' && (
+                <span
+                  data-testid="editor-host-files-untouched"
+                  className="ml-1 text-[10px] text-neutral-500 font-sans"
+                >
+                  · Host files remain untouched
+                </span>
+              )}
             </span>
           </span>
           <span>·</span>

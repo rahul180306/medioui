@@ -20,6 +20,7 @@ import {
   Layers,
 } from 'lucide-react';
 import { useApp } from '../../state/AppContext';
+import { runtimeInstance } from '../../runtime/client';
 
 interface KeyStatus {
   isConfigured: boolean;
@@ -48,6 +49,8 @@ interface ValidationResult {
   error?: string;
 }
 
+type CredentialStatusRead = 'checking' | 'available' | 'unavailable';
+
 interface ExperientialTestResult {
   success: boolean;
   model?: string;
@@ -63,6 +66,7 @@ interface ExperientialTestResult {
 export const GeminiApiKeyManager: React.FC = () => {
   const { theme } = useApp();
   const isLight = theme === 'light';
+  const isOfflineFixture = runtimeInstance.runtimeKind === 'offline-fixture';
 
   const [activeSection, setActiveSection] = useState<'experiential' | 'gemini'>('experiential');
 
@@ -78,6 +82,7 @@ export const GeminiApiKeyManager: React.FC = () => {
     modelId: 'deepseek-v4.1-flash',
   });
   const [explabsLoading, setExplabsLoading] = useState(true);
+  const [explabsStatusRead, setExplabsStatusRead] = useState<CredentialStatusRead>('checking');
   const [explabsTesting, setExplabsTesting] = useState(false);
   const [explabsSaving, setExplabsSaving] = useState(false);
   const [explabsResult, setExplabsResult] = useState<ExperientialTestResult | null>(null);
@@ -93,50 +98,86 @@ export const GeminiApiKeyManager: React.FC = () => {
     maskedKey: null,
   });
   const [loadingStatus, setLoadingStatus] = useState(true);
+  const [geminiStatusRead, setGeminiStatusRead] = useState<CredentialStatusRead>('checking');
   const [validating, setValidating] = useState(false);
   const [saving, setSaving] = useState(false);
   const [clearing, setClearing] = useState(false);
   const [validationResult, setValidationResult] = useState<ValidationResult | null>(null);
   const [copied, setCopied] = useState(false);
 
+  const experientialCredentialConfirmed = explabsStatusRead === 'available' && explabsStatus.isConfigured;
+  const experientialCredentialMissing = explabsStatusRead === 'available' && !explabsStatus.isConfigured;
+  const geminiCredentialConfirmed = geminiStatusRead === 'available' && status.isConfigured;
+  const geminiCredentialMissing = geminiStatusRead === 'available' && !status.isConfigured;
+
   // Fetch initial statuses
   const fetchExperientialStatus = async () => {
+    if (isOfflineFixture) return;
     try {
       setExplabsLoading(true);
+      setExplabsStatusRead('checking');
       const res = await fetch('/api/experiential/key-status');
-      if (res.ok) {
-        const data = await res.json();
-        setExplabsStatus(data);
-      }
+      if (!res.ok) throw new Error(`Credential status request failed (${res.status})`);
+      const data = await res.json();
+      if (typeof data?.isConfigured !== 'boolean') throw new Error('Credential status response was invalid');
+      setExplabsStatus(data);
+      setExplabsStatusRead('available');
     } catch (err) {
       console.warn('Failed to fetch Experiential status:', err);
+      setExplabsStatusRead('unavailable');
     } finally {
       setExplabsLoading(false);
     }
   };
 
   const fetchGeminiStatus = async () => {
+    if (isOfflineFixture) return;
     try {
       setLoadingStatus(true);
+      setGeminiStatusRead('checking');
       const res = await fetch('/api/gemini/key-status');
-      if (res.ok) {
-        const data = await res.json();
-        setStatus(data);
-      }
+      if (!res.ok) throw new Error(`Credential status request failed (${res.status})`);
+      const data = await res.json();
+      if (typeof data?.isConfigured !== 'boolean') throw new Error('Credential status response was invalid');
+      setStatus(data);
+      setGeminiStatusRead('available');
     } catch (err) {
       console.warn('Failed to fetch Gemini key status:', err);
+      setGeminiStatusRead('unavailable');
     } finally {
       setLoadingStatus(false);
     }
   };
 
   useEffect(() => {
+    if (isOfflineFixture) {
+      setExplabsLoading(false);
+      setLoadingStatus(false);
+      setExplabsStatusRead('unavailable');
+      setGeminiStatusRead('unavailable');
+      setExplabsStatus({
+        isConfigured: false,
+        isCustomOverride: false,
+        isEnvConfigured: false,
+        maskedKey: null,
+        baseUrl: 'https://api.experientiallabs.ai/v1',
+        modelId: 'deepseek-v4.1-flash',
+      });
+      setStatus({
+        isConfigured: false,
+        isCustomOverride: false,
+        isEnvConfigured: false,
+        maskedKey: null,
+      });
+      return;
+    }
     fetchExperientialStatus();
     fetchGeminiStatus();
   }, []);
 
   // Save / Override Experiential Key
   const handleSaveExplabsKey = async () => {
+    if (isOfflineFixture) return;
     setExplabsSaving(true);
     setExplabsResult(null);
     try {
@@ -158,6 +199,7 @@ export const GeminiApiKeyManager: React.FC = () => {
 
   // Run Experiential Test Call
   const handleTestExplabsCall = async () => {
+    if (isOfflineFixture) return;
     setExplabsTesting(true);
     setExplabsResult(null);
     try {
@@ -183,6 +225,7 @@ export const GeminiApiKeyManager: React.FC = () => {
 
   // Validate Gemini key
   const handleValidateGemini = async (save = false) => {
+    if (isOfflineFixture) return;
     const keyToTest = inputKey.trim();
     if (!keyToTest && !status.isConfigured) {
       setValidationResult({
@@ -240,6 +283,7 @@ export const GeminiApiKeyManager: React.FC = () => {
 
   // Clear Gemini key
   const handleClearGeminiKey = async () => {
+    if (isOfflineFixture) return;
     setClearing(true);
     setValidationResult(null);
     try {
@@ -272,9 +316,25 @@ export const GeminiApiKeyManager: React.FC = () => {
           API Keys & Gateway Credentials
         </h1>
         <p className={`text-xs mt-1 leading-relaxed ${isLight ? 'text-[#4b5563]' : 'text-neutral-400'}`}>
-          Configure credentials for real-time model executions and OpenAI-compatible gateways.
+          {isOfflineFixture
+            ? 'Provider configuration and testing are disabled in the selected offline fixture.'
+            : 'Configure credentials for real-time model executions and OpenAI-compatible gateways.'}
         </p>
       </div>
+
+      {isOfflineFixture && (
+        <div
+          data-testid="controlled-demo-banner"
+          className={`p-3.5 rounded-xl border flex items-center gap-2.5 text-xs font-medium ${
+            isLight
+              ? 'bg-amber-50 border-amber-300 text-amber-900'
+              : 'bg-amber-950/40 border-amber-800/60 text-amber-200'
+          }`}
+        >
+          <AlertCircle className="w-4 h-4 shrink-0 text-amber-500" />
+          <span>Controlled demonstration: Provider credential mutation disabled in offline fixture mode</span>
+        </div>
+      )}
 
       {/* Tabs */}
       <div className={`flex items-center gap-2 border-b pb-1 ${isLight ? 'border-[#e2e4e8]' : 'border-[#292830]'}`}>
@@ -291,12 +351,8 @@ export const GeminiApiKeyManager: React.FC = () => {
           }`}
         >
           <Server className="w-3.5 h-3.5" />
-          <span>Experiential Gateway (EXPLABS_API_KEY)</span>
-          {explabsStatus.isConfigured ? (
-            <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block" />
-          ) : (
-            <span className="w-2 h-2 rounded-full bg-amber-500 inline-block" />
-          )}
+          <span>{isOfflineFixture ? 'Experiential Gateway · Unavailable offline' : 'Experiential Gateway (EXPLABS_API_KEY)'}</span>
+          <span className="w-2 h-2 rounded-full bg-neutral-500 inline-block" aria-label="Provider connection not verified" />
         </button>
 
         <button
@@ -312,12 +368,8 @@ export const GeminiApiKeyManager: React.FC = () => {
           }`}
         >
           <Sparkles className="w-3.5 h-3.5" />
-          <span>Google Gemini (GEMINI_API_KEY)</span>
-          {status.isConfigured ? (
-            <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block" />
-          ) : (
-            <span className="w-2 h-2 rounded-full bg-neutral-500 inline-block" />
-          )}
+          <span>{isOfflineFixture ? 'Google Gemini · Unavailable offline' : 'Google Gemini (GEMINI_API_KEY)'}</span>
+          <span className="w-2 h-2 rounded-full bg-neutral-500 inline-block" aria-label="Provider connection not verified" />
         </button>
       </div>
 
@@ -326,28 +378,32 @@ export const GeminiApiKeyManager: React.FC = () => {
           {/* Status Banner */}
           <div
             className={`p-4 rounded-xl border flex items-start justify-between gap-4 ${
-              explabsStatus.isConfigured
+              experientialCredentialConfirmed
                 ? isLight
-                  ? 'bg-emerald-50/60 border-emerald-200 text-emerald-950'
-                  : 'bg-emerald-950/20 border-emerald-800/40 text-emerald-200'
-                : isLight
+                  ? 'bg-neutral-50 border-neutral-200 text-neutral-800'
+                  : 'bg-[#1d1d23] border-[#2c2b36] text-neutral-200'
+                : experientialCredentialMissing && isLight
                 ? 'bg-amber-50/70 border-amber-200 text-amber-950'
-                : 'bg-amber-950/20 border-amber-800/40 text-amber-200'
+                : experientialCredentialMissing
+                ? 'bg-amber-950/20 border-amber-800/40 text-amber-200'
+                : isLight ? 'bg-neutral-50 border-neutral-200 text-neutral-700' : 'bg-[#1d1d23] border-[#2c2b36] text-neutral-300'
             }`}
           >
             <div className="flex items-start gap-3">
               <div
                 className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 mt-0.5 ${
-                  explabsStatus.isConfigured
+                  experientialCredentialConfirmed
                     ? isLight
-                      ? 'bg-emerald-100 text-emerald-700'
-                      : 'bg-emerald-900/60 text-emerald-400'
-                    : isLight
+                      ? 'bg-neutral-100 text-neutral-600'
+                      : 'bg-[#25242d] text-neutral-400'
+                    : experientialCredentialMissing && isLight
                     ? 'bg-amber-100 text-amber-700'
-                    : 'bg-amber-900/60 text-amber-400'
+                    : experientialCredentialMissing
+                    ? 'bg-amber-900/60 text-amber-400'
+                    : isLight ? 'bg-neutral-100 text-neutral-600' : 'bg-[#25242d] text-neutral-400'
                 }`}
               >
-                {explabsStatus.isConfigured ? (
+                {experientialCredentialConfirmed ? (
                   <CheckCircle2 className="w-4 h-4" />
                 ) : (
                   <AlertCircle className="w-4 h-4" />
@@ -356,32 +412,44 @@ export const GeminiApiKeyManager: React.FC = () => {
               <div className="space-y-1">
                 <div className="text-[13.5px] font-semibold flex items-center gap-2">
                   <span>
-                    {explabsStatus.isConfigured
-                      ? 'Experiential Gateway Connected'
-                      : 'EXPLABS_API_KEY Not Configured'}
+                    {isOfflineFixture
+                      ? 'Experiential Gateway unavailable in offline fixture'
+                      : experientialCredentialConfirmed
+                      ? 'Experiential credential configured'
+                      : experientialCredentialMissing
+                      ? 'EXPLABS_API_KEY Not Configured'
+                      : explabsStatusRead === 'checking' ? 'Checking Experiential credential status' : 'Experiential credential status unavailable'}
                   </span>
                   <span
                     className={`text-[10px] uppercase font-mono px-1.5 py-0.5 rounded border ${
-                      explabsStatus.isConfigured
+                      experientialCredentialConfirmed
                         ? isLight
-                          ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
-                          : 'bg-emerald-950 text-emerald-300 border-emerald-800'
-                        : isLight
+                          ? 'bg-neutral-100 text-neutral-700 border-neutral-300'
+                          : 'bg-[#25242d] text-neutral-300 border-[#363542]'
+                        : experientialCredentialMissing && isLight
                         ? 'bg-amber-100 text-amber-800 border-amber-300'
-                        : 'bg-amber-950 text-amber-300 border-amber-800'
+                        : experientialCredentialMissing
+                        ? 'bg-amber-950 text-amber-300 border-amber-800'
+                        : isLight ? 'bg-neutral-100 text-neutral-600 border-neutral-300' : 'bg-[#25242d] text-neutral-400 border-[#363542]'
                     }`}
                   >
-                    {explabsStatus.isConfigured ? 'Ready' : 'Setup Required'}
+                    {isOfflineFixture ? 'Unavailable' : experientialCredentialConfirmed ? 'Configured' : experientialCredentialMissing ? 'Setup Required' : explabsStatusRead === 'checking' ? 'Checking' : 'Unknown'}
                   </span>
                 </div>
                 <p className="text-xs leading-relaxed opacity-90">
-                  {explabsStatus.isConfigured
-                    ? `Routing model deepseek-v4.1-flash through ${explabsStatus.baseUrl}.`
+                  {isOfflineFixture
+                    ? 'Provider credentials and readiness are not inspected in the offline fixture.'
+                    : explabsStatusRead === 'checking'
+                    ? 'Checking whether provider credentials are configured.'
+                    : explabsStatusRead === 'unavailable'
+                    ? 'Credential configuration could not be determined. Refresh status to retry.'
+                    : explabsStatus.isConfigured
+                    ? `A credential is configured for ${explabsStatus.baseUrl}; provider reachability and model availability have not been verified.`
                     : 'The EXPLABS_API_KEY environment variable is not set. Create one and export it or enter it below to run on your Experiential credits.'}
                 </p>
                 {explabsStatus.maskedKey && (
                   <div className="text-[11px] font-mono mt-1 opacity-80">
-                    Active key: <span className="font-semibold">{explabsStatus.maskedKey}</span>
+                    Configured key: <span className="font-semibold">{explabsStatus.maskedKey}</span>
                   </div>
                 )}
               </div>
@@ -389,18 +457,24 @@ export const GeminiApiKeyManager: React.FC = () => {
 
             <button
               onClick={fetchExperientialStatus}
-              disabled={explabsLoading}
+              disabled={isOfflineFixture || explabsLoading}
               className={`p-1.5 rounded-lg border transition-colors shrink-0 cursor-pointer ${
                 isLight
                   ? 'bg-white hover:bg-neutral-100 border-[#d8d8de] text-neutral-600'
                   : 'bg-[#25242d] hover:bg-[#2e2d38] border-[#363542] text-neutral-300'
-              }`}
-              title="Refresh status"
+              } ${isOfflineFixture ? 'opacity-50 cursor-not-allowed' : ''}`}
+              title={isOfflineFixture ? 'Status refresh disabled in controlled demonstration' : 'Refresh status'}
             >
               <RefreshCw className={`w-3.5 h-3.5 ${explabsLoading ? 'animate-spin' : ''}`} />
             </button>
           </div>
 
+          {isOfflineFixture && (
+            <div className={`p-4 rounded-xl border text-xs leading-relaxed ${isLight ? 'bg-neutral-50 border-neutral-200 text-neutral-600' : 'bg-[#1a191f] border-[#292830] text-neutral-400'}`}>
+              Provider endpoint, model, and credential configuration are not inspected by the offline fixture.
+            </div>
+          )}
+          {!isOfflineFixture && <>
           {/* Configuration Parameters Card */}
           <div
             className={`p-4 rounded-xl border space-y-3 ${
@@ -419,7 +493,7 @@ export const GeminiApiKeyManager: React.FC = () => {
               </div>
               <div className={`p-3 rounded-lg border ${isLight ? 'bg-white border-[#e2e4e8]' : 'bg-[#222129] border-[#33323e]'}`}>
                 <div className="text-[11px] text-neutral-400 mb-1">Model ID</div>
-                <div className="font-mono font-medium truncate text-emerald-500">
+                <div className="font-mono font-medium truncate text-neutral-300">
                   deepseek-v4.1-flash
                 </div>
               </div>
@@ -468,6 +542,7 @@ export const GeminiApiKeyManager: React.FC = () => {
               After exporting, restart or refresh to authenticate directly from your shell environment.
             </p>
           </div>
+          </>}
 
           {/* Quick Input & Test Call Section */}
           <div
@@ -485,8 +560,11 @@ export const GeminiApiKeyManager: React.FC = () => {
                   value={explabsInputKey}
                   onChange={(e) => setExplabsInputKey(e.target.value)}
                   placeholder={explabsStatus.maskedKey || 'exp-live-...'}
+                  disabled={isOfflineFixture}
                   className={`w-full px-3.5 py-2.5 pr-20 text-xs font-mono rounded-lg border outline-none transition-all ${
-                    isLight
+                    isOfflineFixture
+                      ? 'opacity-60 cursor-not-allowed bg-neutral-100 dark:bg-neutral-800'
+                      : isLight
                       ? 'bg-[#fcfcfd] border-[#d8d8de] text-black focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20'
                       : 'bg-[#222129] border-[#363542] text-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20'
                   }`}
@@ -504,9 +582,9 @@ export const GeminiApiKeyManager: React.FC = () => {
             <div className="flex flex-wrap items-center gap-2.5 pt-1">
               <button
                 onClick={handleSaveExplabsKey}
-                disabled={explabsSaving || !explabsInputKey.trim()}
+                disabled={isOfflineFixture || explabsSaving || !explabsInputKey.trim()}
                 className={`px-4 py-2 rounded-lg text-xs font-medium flex items-center gap-2 transition-all cursor-pointer ${
-                  !explabsInputKey.trim()
+                  isOfflineFixture || !explabsInputKey.trim()
                     ? 'opacity-50 cursor-not-allowed bg-neutral-600 text-neutral-300'
                     : isLight
                     ? 'bg-blue-600 hover:bg-blue-700 text-white shadow-xs'
@@ -519,9 +597,9 @@ export const GeminiApiKeyManager: React.FC = () => {
 
               <button
                 onClick={handleTestExplabsCall}
-                disabled={explabsTesting || (!explabsStatus.isConfigured && !explabsInputKey.trim())}
+                disabled={isOfflineFixture || explabsTesting || (!explabsStatus.isConfigured && !explabsInputKey.trim())}
                 className={`px-4 py-2 rounded-lg text-xs font-medium flex items-center gap-2 transition-all cursor-pointer ${
-                  !explabsStatus.isConfigured && !explabsInputKey.trim()
+                  isOfflineFixture || (!explabsStatus.isConfigured && !explabsInputKey.trim())
                     ? 'opacity-50 cursor-not-allowed bg-neutral-700 text-neutral-400'
                     : isLight
                     ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs'
@@ -618,28 +696,32 @@ export const GeminiApiKeyManager: React.FC = () => {
           {/* Status Banner */}
           <div
             className={`p-4 rounded-xl border flex items-start justify-between gap-4 ${
-              status.isConfigured
+              geminiCredentialConfirmed
                 ? isLight
-                  ? 'bg-emerald-50/60 border-emerald-200 text-emerald-950'
-                  : 'bg-emerald-950/20 border-emerald-800/40 text-emerald-200'
-                : isLight
+                  ? 'bg-neutral-50 border-neutral-200 text-neutral-800'
+                  : 'bg-[#1d1d23] border-[#2c2b36] text-neutral-200'
+                : geminiCredentialMissing && isLight
                 ? 'bg-amber-50/70 border-amber-200 text-amber-950'
-                : 'bg-amber-950/20 border-amber-800/40 text-amber-200'
+                : geminiCredentialMissing
+                ? 'bg-amber-950/20 border-amber-800/40 text-amber-200'
+                : isLight ? 'bg-neutral-50 border-neutral-200 text-neutral-700' : 'bg-[#1d1d23] border-[#2c2b36] text-neutral-300'
             }`}
           >
             <div className="flex items-start gap-3">
               <div
                 className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 mt-0.5 ${
-                  status.isConfigured
+                  geminiCredentialConfirmed
                     ? isLight
-                      ? 'bg-emerald-100 text-emerald-700'
-                      : 'bg-emerald-900/60 text-emerald-400'
-                    : isLight
+                      ? 'bg-neutral-100 text-neutral-600'
+                      : 'bg-[#25242d] text-neutral-400'
+                    : geminiCredentialMissing && isLight
                     ? 'bg-amber-100 text-amber-700'
-                    : 'bg-amber-900/60 text-amber-400'
+                    : geminiCredentialMissing
+                    ? 'bg-amber-900/60 text-amber-400'
+                    : isLight ? 'bg-neutral-100 text-neutral-600' : 'bg-[#25242d] text-neutral-400'
                 }`}
               >
-                {status.isConfigured ? (
+                {geminiCredentialConfirmed ? (
                   <CheckCircle2 className="w-4 h-4" />
                 ) : (
                   <AlertCircle className="w-4 h-4" />
@@ -648,9 +730,13 @@ export const GeminiApiKeyManager: React.FC = () => {
               <div className="space-y-1">
                 <div className="text-[13.5px] font-semibold flex items-center gap-2">
                   <span>
-                    {status.isConfigured
-                      ? 'Google Gemini Key Connected'
-                      : 'Gemini Key Not Configured'}
+                    {isOfflineFixture
+                      ? 'Google Gemini unavailable in offline fixture'
+                      : geminiCredentialConfirmed
+                      ? 'Google Gemini credential configured'
+                      : geminiCredentialMissing
+                      ? 'Gemini Key Not Configured'
+                      : geminiStatusRead === 'checking' ? 'Checking Google Gemini credential status' : 'Google Gemini credential status unavailable'}
                   </span>
                   {status.isCustomOverride && (
                     <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-blue-500/15 text-blue-400 border border-blue-500/30">
@@ -659,13 +745,19 @@ export const GeminiApiKeyManager: React.FC = () => {
                   )}
                 </div>
                 <p className="text-xs leading-relaxed opacity-90">
-                  {status.isConfigured
-                    ? 'Valid Gemini credentials active for fast multimodal reasoning.'
+                  {isOfflineFixture
+                    ? 'Provider credentials and model readiness are not inspected in the offline fixture.'
+                    : geminiStatusRead === 'checking'
+                    ? 'Checking whether provider credentials are configured.'
+                    : geminiStatusRead === 'unavailable'
+                    ? 'Credential configuration could not be determined. Refresh status to retry.'
+                    : status.isConfigured
+                    ? 'A Gemini credential is configured; provider reachability and model availability have not been verified.'
                     : 'No API key detected. Provide your Gemini key to enable live model reasoning.'}
                 </p>
                 {status.maskedKey && (
                   <div className="text-[11px] font-mono mt-1 opacity-80">
-                    Active key: <span className="font-semibold">{status.maskedKey}</span>
+                    Configured key: <span className="font-semibold">{status.maskedKey}</span>
                   </div>
                 )}
               </div>
@@ -673,13 +765,13 @@ export const GeminiApiKeyManager: React.FC = () => {
 
             <button
               onClick={fetchGeminiStatus}
-              disabled={loadingStatus}
+              disabled={isOfflineFixture || loadingStatus}
               className={`p-1.5 rounded-lg border transition-colors shrink-0 cursor-pointer ${
                 isLight
                   ? 'bg-white hover:bg-neutral-100 border-[#d8d8de] text-neutral-600'
                   : 'bg-[#25242d] hover:bg-[#2e2d38] border-[#363542] text-neutral-300'
-              }`}
-              title="Refresh status"
+              } ${isOfflineFixture ? 'opacity-50 cursor-not-allowed' : ''}`}
+              title={isOfflineFixture ? 'Status refresh disabled in controlled demonstration' : 'Refresh status'}
             >
               <RefreshCw className={`w-3.5 h-3.5 ${loadingStatus ? 'animate-spin' : ''}`} />
             </button>
@@ -701,8 +793,11 @@ export const GeminiApiKeyManager: React.FC = () => {
                   value={inputKey}
                   onChange={(e) => setInputKey(e.target.value)}
                   placeholder={status.maskedKey || 'AIzaSy...'}
+                  disabled={isOfflineFixture}
                   className={`w-full px-3.5 py-2.5 pr-20 text-xs font-mono rounded-lg border outline-none transition-all ${
-                    isLight
+                    isOfflineFixture
+                      ? 'opacity-60 cursor-not-allowed bg-neutral-100 dark:bg-neutral-800'
+                      : isLight
                       ? 'bg-[#fcfcfd] border-[#d8d8de] text-black focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20'
                       : 'bg-[#222129] border-[#363542] text-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20'
                   }`}
@@ -720,9 +815,9 @@ export const GeminiApiKeyManager: React.FC = () => {
             <div className="flex flex-wrap items-center gap-2.5 pt-1">
               <button
                 onClick={() => handleValidateGemini(true)}
-                disabled={saving || validating || !inputKey.trim()}
+                disabled={isOfflineFixture || saving || validating || !inputKey.trim()}
                 className={`px-4 py-2 rounded-lg text-xs font-medium flex items-center gap-2 transition-all cursor-pointer ${
-                  !inputKey.trim()
+                  isOfflineFixture || !inputKey.trim()
                     ? 'opacity-50 cursor-not-allowed bg-neutral-600 text-neutral-300'
                     : isLight
                     ? 'bg-blue-600 hover:bg-blue-700 text-white shadow-xs'
@@ -735,7 +830,7 @@ export const GeminiApiKeyManager: React.FC = () => {
 
               <button
                 onClick={() => handleValidateGemini(false)}
-                disabled={validating || saving || (!inputKey.trim() && !status.isConfigured)}
+                disabled={isOfflineFixture || validating || saving || (!inputKey.trim() && !status.isConfigured)}
                 className={`px-3.5 py-2 rounded-lg text-xs font-medium border flex items-center gap-2 transition-colors cursor-pointer ${
                   isLight
                     ? 'bg-white hover:bg-neutral-100 border-[#d8d8de] text-neutral-700'
@@ -749,7 +844,7 @@ export const GeminiApiKeyManager: React.FC = () => {
               {status.isCustomOverride && (
                 <button
                   onClick={handleClearGeminiKey}
-                  disabled={clearing}
+                  disabled={isOfflineFixture || clearing}
                   className={`px-3 py-2 rounded-lg text-xs font-medium flex items-center gap-1.5 transition-colors cursor-pointer text-red-400 hover:bg-red-500/10`}
                 >
                   <RotateCcw className="w-3.5 h-3.5" />

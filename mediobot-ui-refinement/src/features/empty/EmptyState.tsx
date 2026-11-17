@@ -3,9 +3,10 @@ import { CodexGlyph } from '../../components/icons/CodexGlyph';
 import { Composer } from '../composer/Composer';
 import { useApp } from '../../state/AppContext';
 import { getMediobotPresentation, getMediobotAvatarColors, normalizeMediobotId } from '../mediobots/presentation';
+import { MediobotAvatar } from '../threads/MediobotAvatar';
 
 export const EmptyState: React.FC = () => {
-  const { selectedMediobotId, agents, theme } = useApp();
+  const { selectedMediobotId, agents, theme, persistenceError, clearPersistenceError } = useApp();
   const isLight = theme === 'light';
   const cleanSelectedId = selectedMediobotId ? normalizeMediobotId(selectedMediobotId) : null;
   const isMedioBotMode = cleanSelectedId !== null;
@@ -46,8 +47,56 @@ export const EmptyState: React.FC = () => {
 
   return (
     <div className="flex-1 flex flex-col items-center justify-between w-full h-full min-h-0 pb-8 select-none">
+      {persistenceError && (
+        <div
+          data-testid="persistence-error-banner"
+          className="p-3 rounded-xl border border-rose-300 bg-rose-50 text-rose-900 dark:bg-rose-950/40 dark:border-rose-800 dark:text-rose-200 flex items-center justify-between text-xs mt-4 mb-2 shadow-xs select-none max-w-3xl w-full mx-auto px-4"
+        >
+          <div className="flex items-center gap-2">
+            <span className="font-semibold">Persistence Error:</span>
+            <span>{persistenceError}</span>
+          </div>
+          <button
+            type="button"
+            onClick={clearPersistenceError}
+            className="text-rose-700 dark:text-rose-300 hover:underline px-2 py-0.5 rounded cursor-pointer font-medium"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
       {/* Top spacing to center the greeting vertically */}
       <div className="flex-1" />
+
+      {isMedioBotMode && cleanSelectedId && (
+        <div
+          data-testid={`specialist-chat-banner-${cleanSelectedId}`}
+          className={`p-3.5 rounded-2xl border flex items-center justify-between select-none shadow-2xs mb-4 w-full max-w-xl mx-auto ${
+            isLight
+              ? 'bg-[#f8f9fa] border-[#e2e4e8] text-[#18181b]'
+              : 'bg-[#18181d] border-[#292832] text-neutral-200'
+          }`}
+        >
+          <div className="flex items-center gap-3">
+            <MediobotAvatar actor={{ type: 'mediobot', mediobotId: cleanSelectedId }} size="sm" />
+            <div className="flex flex-col">
+              <div className="flex items-center gap-2">
+                <span className={`text-xs font-semibold ${
+                  isLight ? botVisuals.lightText : botVisuals.darkText
+                }`}>
+                  {targetName}
+                </span>
+                <span className={`text-[10px] px-1.5 py-0.5 rounded font-mono ${isLight ? 'bg-black/5 text-neutral-600' : 'bg-white/10 text-neutral-400'}`}>
+                  Specialist Direct Chat
+                </span>
+              </div>
+              <span className={`text-[11px] ${isLight ? 'text-neutral-500' : 'text-neutral-400'}`}>
+                {botVisuals.specialization}
+              </span>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Center Emblem & Headline */}
       <div

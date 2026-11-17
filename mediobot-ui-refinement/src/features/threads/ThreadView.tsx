@@ -112,7 +112,17 @@ function activeActivityLabel(items: ReadonlyArray<ThreadItem>): string {
 }
 
 export const ThreadView: React.FC = () => {
-  const { activeThread, activeTurnId, chatHydrationStatus, reloadThreads, theme, selectedMediobotId } = useApp();
+  const {
+    activeThread,
+    activeTurnId,
+    chatHydrationStatus,
+    reloadThreads,
+    theme,
+    selectedMediobotId,
+    persistenceError,
+    clearPersistenceError,
+    openChatTab,
+  } = useApp();
   const isLight = theme === 'light';
 
   // Determine whether this conversation is an individual specialist's separate workspace/chat
@@ -256,6 +266,24 @@ export const ThreadView: React.FC = () => {
           catch { /* Session storage may be unavailable in private browsing. */ }
         }
       }} data-testid="thread-scroll-root" className="flex-1 overflow-y-auto px-4 py-6 md:px-8 max-w-3xl w-full mx-auto space-y-8">
+        {persistenceError && (
+          <div
+            data-testid="persistence-error-banner"
+            className="p-3 rounded-xl border border-rose-300 bg-rose-50 text-rose-900 dark:bg-rose-950/40 dark:border-rose-800 dark:text-rose-200 flex items-center justify-between text-xs mb-4 shadow-xs select-none"
+          >
+            <div className="flex items-center gap-2">
+              <span className="font-semibold">Persistence Error:</span>
+              <span>{persistenceError}</span>
+            </div>
+            <button
+              type="button"
+              onClick={clearPersistenceError}
+              className="text-rose-700 dark:text-rose-300 hover:underline px-2 py-0.5 rounded cursor-pointer font-medium"
+            >
+              Dismiss
+            </button>
+          </div>
+        )}
         {isSpecificMediobotChat && cleanSpecId && (
           <div data-testid={`specialist-chat-banner-${cleanSpecId}`} className={`p-3.5 rounded-2xl border flex items-center justify-between select-none shadow-2xs mb-4 ${
             isLight
@@ -283,6 +311,54 @@ export const ThreadView: React.FC = () => {
                 </span>
               </div>
             </div>
+          </div>
+        )}
+        {activeThread?.originatingMainThreadId && (
+          <div
+            data-testid="originating-main-pill"
+            className={`px-3 py-2 rounded-xl border flex items-center justify-between text-[11px] font-sans mb-4 select-none ${
+              isLight
+                ? 'bg-blue-50/70 border-blue-200 text-blue-900'
+                : 'bg-blue-950/30 border-blue-800/40 text-blue-200'
+            }`}
+          >
+            <div className="flex items-center gap-2">
+              <span className="font-semibold">Associated with Main Chat:</span>
+              <span className="font-mono text-[10.5px] opacity-80">{activeThread.originatingMainThreadId}</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => openChatTab(activeThread.originatingMainThreadId!)}
+              className={`px-2.5 py-1 rounded-md text-[11px] font-medium transition-colors cursor-pointer ${
+                isLight ? 'bg-blue-100 hover:bg-blue-200 text-blue-950' : 'bg-blue-900/50 hover:bg-blue-900 text-blue-100'
+              }`}
+            >
+              ← Back to Main Chat
+            </button>
+          </div>
+        )}
+        {isMainChat && activeThread?.associatedMaestroThreadId && (
+          <div
+            data-testid="associated-maestro-pill"
+            className={`px-3 py-2 rounded-xl border flex items-center justify-between text-[11px] font-sans mb-4 select-none ${
+              isLight
+                ? 'bg-purple-50/70 border-purple-200 text-purple-900'
+                : 'bg-purple-950/30 border-purple-800/40 text-purple-200'
+            }`}
+          >
+            <div className="flex items-center gap-2">
+              <span className="font-semibold">Linked Maestro Orchestrator:</span>
+              <span className="font-mono text-[10.5px] opacity-80">{activeThread.associatedMaestroThreadId}</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => openChatTab(activeThread.associatedMaestroThreadId!)}
+              className={`px-2.5 py-1 rounded-md text-[11px] font-medium transition-colors cursor-pointer ${
+                isLight ? 'bg-purple-100 hover:bg-purple-200 text-purple-950' : 'bg-purple-900/50 hover:bg-purple-900 text-purple-100'
+              }`}
+            >
+              Open Maestro View →
+            </button>
           </div>
         )}
         {isMainChat && (

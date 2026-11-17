@@ -63,6 +63,7 @@ export const ThreadsDrawer: React.FC = () => {
     createNewTeam,
     createNewMainTeamChat,
     activeTeamId,
+    setActiveTeamId,
     setActiveModal,
     openLibrary,
     agents,
@@ -467,14 +468,27 @@ export const ThreadsDrawer: React.FC = () => {
     }
   };
 
-  // Deduplicate threads by unique id and preserve specialist threads in history
+  // Deduplicate threads by unique id and scope strictly to the active team environment
   const uniqueThreads = useMemo(() => {
     const seen = new Set<string>();
     return (threads || []).filter((t) => {
       if (!t.id || seen.has(t.id)) return false;
+      if (activeTeamId && t.teamId && t.teamId !== activeTeamId) return false;
       seen.add(t.id);
       return true;
     });
+  }, [threads, activeTeamId]);
+
+  const teamsList = useMemo(() => {
+    const map = new Map<string, { id: string; name: string }>();
+    for (const t of threads) {
+      if (t.teamId && !map.has(t.teamId)) {
+        const clean = t.teamId.replace(/^team-/, '').replace(/-\w{6,8}$/, '');
+        const name = clean.charAt(0).toUpperCase() + clean.slice(1);
+        map.set(t.teamId, { id: t.teamId, name: `Team ${name}` });
+      }
+    }
+    return Array.from(map.values());
   }, [threads]);
 
   const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>(() => {
@@ -599,6 +613,29 @@ export const ThreadsDrawer: React.FC = () => {
     if (!contextAgentId) return null;
     return agents.find((a) => normalizeMediobotId(a.id) === contextAgentId) ?? null;
   }, [contextAgentId, agents]);
+
+  const demoChats = useMemo(() => {
+    const demoConfigs = [
+      { id: 'thread-alpha-main-01', index: 1, label: 'Build a Website', tag: 'Planning & Delegation' },
+      { id: 'thread-alpha-main-02', index: 2, label: 'Debug an Application', tag: 'Diffs & Tests' },
+      { id: 'thread-demo-03-parallel-collab', index: 3, label: 'Parallel Collaboration', tag: 'Multi-Specialist' },
+      { id: 'thread-demo-04-code-review', index: 4, label: 'Code Review & Audit', tag: 'Review & Approvals' },
+      { id: 'thread-demo-05-research-task', index: 5, label: 'Research & Intelligence', tag: 'Discovery' },
+      { id: 'thread-demo-06-qa-testing', index: 6, label: 'Quality Assurance', tag: 'Failure & Recovery' },
+      { id: 'thread-demo-07-terminal-exec', index: 7, label: 'Terminal Commands', tag: 'CLI Execution' },
+      { id: 'thread-alpha-cody-01', index: 8, label: 'Specialist Direct Chat', tag: 'Cody 1-on-1' },
+      { id: 'thread-demo-09-long-running', index: 9, label: 'Long-Running Recovery', tag: 'Checkpoints' },
+      { id: 'thread-demo-10-complete-project', index: 10, label: 'Complete Project Showcase', tag: 'End-to-End' },
+    ];
+    return demoConfigs.map((cfg) => {
+      const thread = uniqueThreads.find((t) => t.id === cfg.id);
+      return {
+        ...cfg,
+        title: thread?.title || cfg.label,
+        exists: !!thread,
+      };
+    });
+  }, [uniqueThreads]);
 
   const allItems = useMemo(
     () => uniqueThreads.map((t) => ({
@@ -1312,41 +1349,80 @@ export const ThreadsDrawer: React.FC = () => {
               </div>
             )}
 
-            <button
-              onClick={() => {
-                if (contextAgentId) {
-                  createNewChat(contextAgentId, activeTeamId);
-                } else {
-                  createNewTeam();
-                }
-              }}
-              className={`w-full flex items-center justify-between px-3 py-1.5 text-[12.5px] font-medium rounded-lg transition-colors cursor-pointer ${
-                isLight
-                  ? 'text-[#18181b] hover:text-[#09090b] hover:bg-[#eaebee]'
-                  : 'text-neutral-200 hover:text-white hover:bg-[#222227]'
-              }`}
-            >
-              <div className="flex items-center gap-2.5">
-                <SquarePen className={`w-4 h-4 ${isLight ? 'text-[#6b6a75]' : 'text-neutral-300'} stroke-[1.75]`} />
-                <span>{contextAgent ? `New ${contextAgent.name} chat` : 'New chat'}</span>
+            {/* Team Switcher Pill Bar when multiple teams exist */}
+            {teamsList.length > 1 && (
+              <div className="mb-2 flex items-center gap-1.5 overflow-x-auto pb-1 select-none">
+                {teamsList.map((tm) => {
+                  const isCurrent = tm.id === activeTeamId;
+                  return (
+                    <button
+                      key={tm.id}
+                      onClick={() => {
+                        if (tm.id !== activeTeamId) {
+                          setActiveTeamId(tm.id);
+                          const teamMain = threads.find((t) => t.teamId === tm.id && t.threadType === 'team');
+                          if (teamMain) openChatTab(teamMain.id);
+                        }
+                      }}
+                      className={`text-[10px] font-mono px-2 py-0.5 rounded-full border transition-colors cursor-pointer shrink-0 ${
+                        isCurrent
+                          ? isLight
+                            ? 'bg-blue-50 text-blue-700 border-blue-300 font-semibold shadow-2xs'
+                            : 'bg-blue-950/60 text-blue-300 border-blue-700/60 font-semibold'
+                          : isLight
+                          ? 'border-[#e2e4e8] hover:bg-[#eaebee] text-[#64748b]'
+                          : 'border-white/10 hover:bg-[#202025] text-neutral-400'
+                      }`}
+                    >
+                      {tm.name}
+                    </button>
+                  );
+                })}
               </div>
-              {contextAgent && (
-                <span
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    createNewChat(null);
-                  }}
-                  className={`text-[10.5px] px-1.5 py-0.5 rounded border transition-colors ${
+            )}
+
+            {contextAgentId ? (
+              <button
+                onClick={() => createNewChat(contextAgentId, activeTeamId)}
+                className={`w-full flex items-center justify-between px-3 py-1.5 text-[12.5px] font-medium rounded-lg transition-colors cursor-pointer ${
+                  isLight
+                    ? 'text-[#18181b] hover:text-[#09090b] hover:bg-[#eaebee]'
+                    : 'text-neutral-200 hover:text-white hover:bg-[#222227]'
+                }`}
+              >
+                <div className="flex items-center gap-2.5">
+                  <SquarePen className={`w-4 h-4 ${isLight ? 'text-[#6b6a75]' : 'text-neutral-300'} stroke-[1.75]`} />
+                  <span>{`New ${contextAgent?.name ?? 'Specialist'} chat`}</span>
+                </div>
+              </button>
+            ) : (
+              <div className="flex items-center gap-1.5">
+                <button
+                  onClick={() => createNewMainTeamChat()}
+                  className={`flex-1 flex items-center gap-2 px-3 py-1.5 text-[12.5px] font-medium rounded-lg transition-colors cursor-pointer ${
                     isLight
-                      ? 'border-neutral-300 hover:bg-neutral-200 text-neutral-600'
-                      : 'border-white/10 hover:bg-white/10 text-neutral-400'
+                      ? 'text-[#18181b] hover:text-[#09090b] hover:bg-[#eaebee]'
+                      : 'text-neutral-200 hover:text-white hover:bg-[#222227]'
                   }`}
-                  title="Start Team Chat instead"
+                  title="Create new independent Main conversation in this team"
                 >
-                  Team
-                </span>
-              )}
-            </button>
+                  <SquarePen className={`w-4 h-4 ${isLight ? 'text-[#6b6a75]' : 'text-neutral-300'} stroke-[1.75]`} />
+                  <span>New chat</span>
+                </button>
+                <button
+                  onClick={() => createNewTeam()}
+                  className={`flex items-center gap-1 px-2.5 py-1.5 text-[11px] font-medium rounded-lg border transition-colors cursor-pointer shrink-0 ${
+                    isLight
+                      ? 'border-[#e2e4e8] hover:bg-[#eaebee] text-[#475569]'
+                      : 'border-white/10 hover:bg-[#222227] text-neutral-300'
+                  }`}
+                  title="Create a new distinct Team environment"
+                >
+                  <Users className="w-3.5 h-3.5" />
+                  <span>New team</span>
+                </button>
+              </div>
+            )}
           </div>
 
           {/* Scrollable History List */}
@@ -1472,6 +1548,68 @@ export const ThreadsDrawer: React.FC = () => {
             ) : (
               /* Grouped collapsible sections by agent */
               <div className="space-y-2">
+                {/* 10 DEMONSTRATION CHATS SHOWCASE */}
+                <div className="select-none mb-2 pb-2 border-b border-black/5 dark:border-white/5">
+                  <div
+                    onClick={() => toggleSectionCollapse('__showcase_demos__')}
+                    className={`w-full flex items-center justify-between px-2 py-1.5 rounded-lg cursor-pointer transition-colors ${
+                      isLight ? 'hover:bg-neutral-100 text-[#18181b]' : 'hover:bg-white/5 text-neutral-300'
+                    }`}
+                  >
+                    <div className="flex items-center gap-1.5 truncate">
+                      {collapsedSections['__showcase_demos__'] ? (
+                        <ChevronRight className="w-3.5 h-3.5 text-neutral-400 shrink-0" />
+                      ) : (
+                        <ChevronDown className="w-3.5 h-3.5 text-neutral-400 shrink-0" />
+                      )}
+                      <Sparkles className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                      <span className="text-[12px] font-semibold tracking-tight truncate">10 Demonstration Chats</span>
+                      <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono ${
+                        isLight ? 'bg-amber-100 text-amber-800 font-semibold' : 'bg-amber-950/60 text-amber-300 border border-amber-800/40'
+                      }`}>
+                        10
+                      </span>
+                    </div>
+                  </div>
+
+                  {!collapsedSections['__showcase_demos__'] && (
+                    <div className="mt-1 space-y-0.5 pl-1.5">
+                      {demoChats.map((demo) => {
+                        const isActive = demo.id === activeThreadId;
+                        return (
+                          <div
+                            key={demo.id}
+                            onClick={() => openChatTab(demo.id)}
+                            className={`group relative w-full flex items-center justify-between px-2 py-1.5 rounded-lg text-left text-xs transition-colors cursor-pointer ${
+                              isActive
+                                ? isLight
+                                  ? 'bg-neutral-200/80 font-medium text-neutral-900'
+                                  : 'bg-[#27272d] font-medium text-white shadow-2xs'
+                                : isLight
+                                ? 'hover:bg-neutral-100 text-neutral-700'
+                                : 'hover:bg-[#1a1a1e] text-neutral-400 hover:text-neutral-200'
+                            }`}
+                          >
+                            <div className="flex items-center gap-2 truncate flex-1 pr-1">
+                              <span className={`shrink-0 w-4.5 h-4.5 rounded text-[10px] font-mono font-bold flex items-center justify-center ${
+                                isActive
+                                  ? isLight ? 'bg-black text-white' : 'bg-white text-black'
+                                  : isLight ? 'bg-neutral-200/60 text-neutral-600' : 'bg-neutral-800 text-neutral-400'
+                              }`}>
+                                {demo.index}
+                              </span>
+                              <div className="flex flex-col min-w-0 truncate">
+                                <span className="truncate font-medium text-[12px]">{demo.title}</span>
+                                <span className="text-[9.5px] text-neutral-400 dark:text-neutral-500 truncate">{demo.tag}</span>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+
                 {agentGroups.map((group) => {
                   const isCollapsed = Boolean(collapsedSections[group.agentId]);
                   return (

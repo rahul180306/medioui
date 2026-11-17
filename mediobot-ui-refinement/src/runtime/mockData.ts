@@ -122,11 +122,11 @@ export const MOCK_PROVIDERS: ProviderConfig[] = [
     name: 'Google Gemini',
     type: 'builtin',
     iconType: 'gemini',
-    connected: true,
-    enabled: true,
+    connected: false,
+    enabled: false,
     models: [
-      { id: 'gemini-3.6-flash', name: 'Gemini 3.6 Flash', enabled: true, tag: 'Default', context: '1M' },
-      { id: 'gemini-3.5-flash-lite', name: 'Gemini 3.5 Flash Lite', enabled: true, tag: 'Fast', context: '1M' },
+      { id: 'gemini-3.6-flash', name: 'Gemini 3.6 Flash', enabled: false, tag: 'Example', context: 'unknown' },
+      { id: 'gemini-3.5-flash-lite', name: 'Gemini 3.5 Flash Lite', enabled: false, tag: 'Example', context: 'unknown' },
     ],
   },
   {
@@ -134,10 +134,10 @@ export const MOCK_PROVIDERS: ProviderConfig[] = [
     name: 'Anthropic',
     type: 'builtin',
     iconType: 'anthropic',
-    connected: true,
-    enabled: true,
+    connected: false,
+    enabled: false,
     models: [
-      { id: 'claude-3-7-sonnet', name: 'Claude 3.7 Sonnet', enabled: true, tag: 'Thinking', context: '200K' },
+      { id: 'claude-3-7-sonnet', name: 'Claude 3.7 Sonnet', enabled: false, tag: 'Example', context: 'unknown' },
     ],
   },
   {
@@ -145,10 +145,10 @@ export const MOCK_PROVIDERS: ProviderConfig[] = [
     name: 'DeepSeek Local Engine',
     type: 'builtin',
     iconType: 'ollama',
-    connected: true,
-    enabled: true,
+    connected: false,
+    enabled: false,
     models: [
-      { id: 'deepseek-r1-local', name: 'DeepSeek R1 (Local)', enabled: true, tag: 'Reasoning', context: '64K' },
+      { id: 'deepseek-r1-local', name: 'DeepSeek R1 (Local)', enabled: false, tag: 'Example', context: 'unknown' },
     ],
   },
 ];

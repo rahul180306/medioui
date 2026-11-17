@@ -8,9 +8,11 @@
     "dev": "tsx server.ts",
     "start": "tsx server.ts",
     "build": "vite build mediobot-ui-refinement --outDir ../dist --emptyOutDir",
-    "preview": "vite preview mediobot-ui-refinement --outDir ../dist --port 3000 --host 0.0.0.0",
+    "preview": "vite preview mediobot-ui-refinement --outDir ../dist --port 3000 --host 127.0.0.1",
     "lint": "vite build mediobot-ui-refinement --outDir ../dist --emptyOutDir",
-    "typecheck": "tsc --project mediobot-ui-refinement/tsconfig.json --noEmit"
+    "typecheck": "tsc --project mediobot-ui-refinement/tsconfig.json --noEmit",
+    "test": "tsx --test tests/ui-refinement-verification.test.ts mediobot-ui-refinement/tests/runtime/offline-fixture-truthfulness.test.ts mediobot-ui-refinement/tests/ui/offline-settings-truthfulness.test.ts mediobot-ui-refinement/tests/ui/ExecutionActivityTimeline.test.ts mediobot-ui-refinement/tests/ui/allowlist-redaction.test.ts mediobot-ui-refinement/tests/ui/multi-specialist-parallel-work.test.ts",
+    "test:server-security": "tsx --test tests/server-security.test.ts"
   },
   "dependencies": {
     "@codemirror/commands": "^6.11.1",
@@ -47,10 +49,13 @@
   "devDependencies": {
     "@tailwindcss/vite": "^4.0.0",
     "@types/express": "^5.0.6",
+    "@types/jsdom": "^30.0.0",
     "@types/node": "^26.6.6",
     "@types/react": "19.2.14",
     "@types/react-dom": "19.2.3",
     "@vitejs/plugin-react": "^4.3.4",
+    "jsdom": "^31.0.0",
+    "playwright": "^1.65.0",
     "tailwindcss": "^4.0.0",
     "typescript": "^5.7.0",
     "vite": "^6.2.0"

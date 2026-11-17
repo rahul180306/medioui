@@ -64,12 +64,30 @@ export interface MedioBotAgent {
   lastActiveAt?: number;
 }
 
+export type FileChangeState = 'proposed' | 'applied' | 'verified' | 'rejected';
+
+export interface DurableDiffReceipt {
+  receiptId: string;
+  status: 'applied' | 'verified';
+  filePath: string;
+  effectEvidence?: string;
+  verificationEvidence?: string;
+  verifier?: string;
+  authorizedBy: string;
+  timestamp: string;
+}
+
 export interface FileDiff {
   filePath: string;
   language?: string;
   additions: number;
   deletions: number;
   truncated?: boolean;
+  state?: FileChangeState;
+  verificationEvidence?: string;
+  verifiedBy?: string;
+  isControlledDemonstration?: boolean;
+  receipt?: DurableDiffReceipt;
   lines?: {
     type: 'context' | 'add' | 'remove';
     content: string;
@@ -396,6 +414,10 @@ export interface Thread {
   branch?: string;
   approvalMode?: ApprovalMode;
   turns: Turn[];
+  /** Idempotent lazy association: the unique Maestro orchestration conversation for this Main thread */
+  associatedMaestroThreadId?: string;
+  /** Originating Main thread identity if this is an associated Maestro thread */
+  originatingMainThreadId?: string;
 }
 
 export type WorkbenchTab =
@@ -471,3 +493,5 @@ export interface MedioBotExpression {
 }
 
 export { mergeMonotonicToolData, type MonotonicToolData } from '../utils/monotonicMerge';
+export * from './executionActivity';
+

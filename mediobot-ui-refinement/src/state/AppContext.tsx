@@ -296,6 +296,9 @@ interface AppContextType {
   disconnectProvider: (providerId: string) => void;
   activeTeamId: string | null;
   setActiveTeamId: (teamId: string | null) => void;
+  persistenceError: string | null;
+  clearPersistenceError: () => void;
+  resolveAssociatedMaestroThread: (mainThreadId: string) => Thread | null;
   createNewTeam: () => void;
   createNewMainTeamChat: () => void;
   createNewChat: (targetSpecialistId?: string | null, targetTeamId?: string | null) => void;
@@ -398,6 +401,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   });
   const workspaceThreadIds = useRef(new Set(threads.map((thread) => thread.id)));
   workspaceThreadIds.current = new Set(threads.map((thread) => thread.id));
+  const threadsRef = useRef<Thread[]>(threads);
+  threadsRef.current = threads;
+  const resolvingMaestroMapRef = useRef<Map<string, Thread>>(new Map());
   const [activeTurnsByThread, setActiveTurnsByThread] = useState<Record<string, string>>({});
   const [chatHydrationStatus, setChatHydrationStatus] = useState<'UNHYDRATED' | 'LOADING' | 'READY' | 'ERROR'>('LOADING');
   const [workspaceStatus, setWorkspaceStatus] = useState<WorkspaceStatus>('EMPTY');
@@ -421,6 +427,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (teamId) localStorage.setItem('mediobot_active_team_id', teamId);
       else localStorage.removeItem('mediobot_active_team_id');
     } catch {}
+  }, []);
+
+  const [persistenceError, setPersistenceError] = useState<string | null>(null);
+  const clearPersistenceError = useCallback(() => setPersistenceError(null), []);
+  const handleSaveFailure = useCallback((error: unknown, context: string) => {
+    const message = error instanceof Error ? error.message : String(error);
+    setPersistenceError(`Save failure on ${context}: ${message}`);
   }, []);
 
   const reloadThreads = useCallback(async () => {
@@ -892,6 +905,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const cleanOwner = owner ? normalizeMediobotId(owner) : null;
       setSelectedMediobotId(cleanOwner);
     }
+
+    // Always restore the thread's originating team context immediately,
+    // even if switching to an already opened tab.
+    if (thread?.teamId && thread.teamId !== activeTeamId) {
+      setActiveTeamId(thread.teamId);
+    }
+
     const tabId = `chat:${threadId}`;
 
     // 1. If tab for this thread is already opened, switch directly to it
@@ -916,14 +936,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (prev.some((t) => t.kind === 'chat' && (t.id === tabId || t.threadId === threadId))) {
         return prev;
       }
-      const thread = threads.find((t) => t.id === threadId);
       return [...prev, { id: tabId, kind: 'chat', threadId, title: thread?.title || 'New chat' }];
     });
-
-    const threadObj = threads.find((t) => t.id === threadId);
-    if (threadObj?.teamId && threadObj.teamId !== activeTeamId) {
-      setActiveTeamId(threadObj.teamId);
-    }
 
     setActiveWorkbenchTabIdState(tabId);
     try {
@@ -933,7 +947,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (isSettingsView) {
       closeSettings();
     }
-  }, [workbenchTabs, threads, pushLocation, isSettingsView, closeSettings]);
+  }, [workbenchTabs, threads, pushLocation, isSettingsView, closeSettings, activeTeamId, setActiveTeamId]);
 
   const closeWorkbenchTab = useCallback((tabId: string) => {
     setWorkbenchTabs((prev) => {
@@ -1781,7 +1795,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       turns: [],
     };
 
-    void runtimeInstance.saveThread(newThread).catch(() => {});
+    void runtimeInstance.saveThread(newThread).catch((err) => handleSaveFailure(err, newThread.title));
     setThreads((prev) => {
       if (prev.some((t) => t.id === newThread.id)) return prev;
       return [newThread, ...prev];
@@ -1804,6 +1818,101 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     } catch {}
     pushLocation({ type: 'thread', threadId });
   }, [activeWorkbenchTab, threads, drafts, activeProjectId, activeBranch, approvalMode, pushLocation, enabledModels, draftModelSelection, selectedMediobotId, agents, activeTeamId]);
+
+  const resolveAssociatedMaestroThread = useCallback((mainThreadId: string): Thread | null => {
+    // 1. Check in-flight resolution mutex to deduplicate simultaneous requests
+    const inFlight = resolvingMaestroMapRef.current.get(mainThreadId);
+    if (inFlight) {
+      return inFlight;
+    }
+
+    // 2. Read from threadsRef to avoid stale React closures
+    const currentThreads = threadsRef.current;
+    const mainThread = currentThreads.find((t) => t.id === mainThreadId);
+    if (!mainThread) return null;
+
+    // 3. Check if main thread already links to an existing maestro thread
+    if (mainThread.associatedMaestroThreadId) {
+      const existing = currentThreads.find((t) => t.id === mainThread.associatedMaestroThreadId);
+      if (existing) return existing;
+    }
+
+    // 4. Check if there is an existing maestro thread pointing back to this main thread
+    const existingByOrigin = currentThreads.find(
+      (t) => (t.teamId === mainThread.teamId || !mainThread.teamId) &&
+             t.threadType === 'mind' &&
+             t.ownerAgent === 'maestro' &&
+             t.originatingMainThreadId === mainThread.id
+    );
+    if (existingByOrigin) {
+      if (mainThread.associatedMaestroThreadId !== existingByOrigin.id) {
+        const updatedMain: Thread = { ...mainThread, associatedMaestroThreadId: existingByOrigin.id, updatedAt: Date.now() };
+        const nextThreads = currentThreads.map((t) => (t.id === mainThread.id ? updatedMain : t));
+        threadsRef.current = nextThreads;
+        setThreads(nextThreads);
+        void (runtimeInstance.saveThreadsAtomic
+          ? runtimeInstance.saveThreadsAtomic([updatedMain])
+          : runtimeInstance.saveThread(updatedMain)
+        ).catch((err) => handleSaveFailure(err, updatedMain.title));
+      }
+      return existingByOrigin;
+    }
+
+    // 5. Idempotently create associated Maestro thread
+    const uniqueSuffix = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID().slice(0, 8) : Math.random().toString(36).slice(2, 8);
+    const maestroThreadId = `thread-maestro-${Date.now()}-${uniqueSuffix}`;
+    const newMaestroThread: Thread = {
+      id: maestroThreadId,
+      teamId: mainThread.teamId,
+      title: `Maestro · ${mainThread.title}`,
+      projectId: mainThread.projectId,
+      ownerAgent: 'maestro',
+      specialistId: 'maestro',
+      threadType: 'mind',
+      agentScope: 'maestro',
+      mode: 'standalone_specialist',
+      originatingMainThreadId: mainThread.id,
+      assignedSpecialists: ['maestro'],
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      model: 'Gemini 3.6 Flash',
+      branch: mainThread.branch,
+      approvalMode: mainThread.approvalMode,
+      turns: [],
+    };
+
+    const updatedMain: Thread = {
+      ...mainThread,
+      associatedMaestroThreadId: maestroThreadId,
+      updatedAt: Date.now(),
+    };
+
+    // Lock in-flight to prevent duplicate creation from concurrent calls
+    resolvingMaestroMapRef.current.set(mainThreadId, newMaestroThread);
+
+    const previousThreads = currentThreads;
+    const nextThreads = [newMaestroThread, ...previousThreads.map((t) => (t.id === mainThread.id ? updatedMain : t))];
+    threadsRef.current = nextThreads;
+    setThreads(nextThreads);
+
+    // Save atomically. If persistence fails, roll back React state and threadsRef to avoid orphan threads.
+    const persistPromise = runtimeInstance.saveThreadsAtomic
+      ? runtimeInstance.saveThreadsAtomic([newMaestroThread, updatedMain])
+      : Promise.all([runtimeInstance.saveThread(newMaestroThread), runtimeInstance.saveThread(updatedMain)]).then(() => {});
+
+    persistPromise
+      .catch((err) => {
+        resolvingMaestroMapRef.current.delete(mainThreadId);
+        threadsRef.current = previousThreads;
+        setThreads(previousThreads);
+        handleSaveFailure(err, 'Maestro Association');
+      })
+      .finally(() => {
+        resolvingMaestroMapRef.current.delete(mainThreadId);
+      });
+
+    return newMaestroThread;
+  }, [handleSaveFailure]);
 
   const createNewTeam = useCallback(() => {
     const uniqueSuffix = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID().slice(0, 8) : Math.random().toString(36).slice(2, 8);
@@ -1843,7 +1952,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     setActiveTeamId(newTeamId);
     setSelectedMediobotId(null);
-    void runtimeInstance.saveThread(newMainThread).catch(() => {});
+    void runtimeInstance.saveThread(newMainThread).catch((err) => handleSaveFailure(err, newMainThread.title));
     setThreads((prev) => [newMainThread, ...prev.filter((t) => t.id !== newMainThread.id)]);
 
     const newTab: WorkbenchTab = {
@@ -1858,7 +1967,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       localStorage.setItem('mediobot_active_workbench_tab_id', newTab.id);
     } catch {}
     pushLocation({ type: 'thread', threadId: mainThreadId });
-  }, [activeProjectId, activeBranch, approvalMode, enabledModels, draftModelSelection, pushLocation, setActiveTeamId]);
+  }, [activeProjectId, activeBranch, approvalMode, enabledModels, draftModelSelection, pushLocation, setActiveTeamId, handleSaveFailure]);
 
   const createNewMainTeamChat = useCallback(() => {
     const currentTeamId = activeTeamId || (activeThread?.teamId ?? activeThread?.id ?? `team-${Date.now()}`);
@@ -1898,7 +2007,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     setActiveTeamId(currentTeamId);
     setSelectedMediobotId(null);
-    void runtimeInstance.saveThread(newMainThread).catch(() => {});
+    void runtimeInstance.saveThread(newMainThread).catch((err) => handleSaveFailure(err, newMainThread.title));
     setThreads((prev) => [newMainThread, ...prev.filter((t) => t.id !== newMainThread.id)]);
 
     const newTab: WorkbenchTab = {
@@ -1913,37 +2022,63 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       localStorage.setItem('mediobot_active_workbench_tab_id', newTab.id);
     } catch {}
     pushLocation({ type: 'thread', threadId: mainThreadId });
-  }, [activeTeamId, activeThread, activeProjectId, activeBranch, approvalMode, enabledModels, draftModelSelection, pushLocation, setActiveTeamId]);
+  }, [activeTeamId, activeThread, activeProjectId, activeBranch, approvalMode, enabledModels, draftModelSelection, pushLocation, setActiveTeamId, handleSaveFailure]);
 
   const selectAgent = useCallback((agentId: string | null) => {
     setSelectedMediobotId(agentId);
     if (agentId) {
       const cleanId = normalizeMediobotId(agentId);
+      if (cleanId === 'maestro') {
+        // Resolve associated Maestro conversation strictly from active team's Main thread (activeTeamId)
+        const currentMain = (activeThread && activeThread.threadType === 'team' && activeThread.teamId === activeTeamId)
+          ? activeThread
+          : threads.find((t) => t.teamId === activeTeamId && t.threadType === 'team');
+
+        if (currentMain) {
+          const maestroThread = resolveAssociatedMaestroThread(currentMain.id);
+          if (maestroThread) {
+            openChatTab(maestroThread.id);
+            return;
+          }
+        } else {
+          // If no Main thread exists for active team, create a new Main thread for this active team
+          createNewMainTeamChat();
+          return;
+        }
+      }
+
+      // Specialist direct chat: Strictly scoped to activeTeamId without cross-team fallback
       const existingSpecialistThread = threads.find(
-        (t) => (t.teamId === activeTeamId || !activeTeamId) &&
+        (t) => (t.teamId === activeTeamId || (!activeTeamId && !t.teamId)) &&
                t.threadType !== 'team' &&
                ((t.ownerAgent === cleanId) || (t.specialistId && normalizeMediobotId(t.specialistId) === cleanId))
-      ) || threads.find(
-        (t) => t.threadType !== 'team' &&
-               ((t.ownerAgent === cleanId) || (t.specialistId && normalizeMediobotId(t.specialistId) === cleanId))
       );
+
       if (existingSpecialistThread) {
         openChatTab(existingSpecialistThread.id);
       } else {
         createNewChat(cleanId, activeTeamId);
       }
     } else {
-      // Main Team selected (shared meeting room)
+      // Main Team selected (shared meeting room): Strictly scoped to activeTeamId without cross-team fallback
+      // If current thread has an originating Main thread, restore it
+      const originatingMainId = activeThread?.originatingMainThreadId;
+      const originatingMain = originatingMainId ? threads.find((t) => t.id === originatingMainId) : null;
+      if (originatingMain) {
+        openChatTab(originatingMain.id);
+        return;
+      }
+
       const teamThread = threads.find(
-        (t) => (t.teamId === activeTeamId || !activeTeamId) && t.threadType === 'team'
-      ) || threads.find(
-        (t) => t.threadType === 'team'
+        (t) => (t.teamId === activeTeamId || (!activeTeamId && !t.teamId)) && t.threadType === 'team'
       );
       if (teamThread) {
         openChatTab(teamThread.id);
+      } else {
+        createNewMainTeamChat();
       }
     }
-  }, [threads, openChatTab, activeTeamId, createNewChat]);
+  }, [threads, openChatTab, activeTeamId, activeThread, createNewChat, createNewMainTeamChat, resolveAssociatedMaestroThread]);
 
   const recruitSpecialist = useCallback((targetThreadId: string, specialistIds: string[]) => {
     setThreads((prev) =>
@@ -1951,11 +2086,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         if (t.id !== targetThreadId) return t;
         const merged = Array.from(new Set([...(t.assignedSpecialists ?? []), ...specialistIds]));
         const updated = { ...t, assignedSpecialists: merged, updatedAt: Date.now() };
-        void runtimeInstance.saveThread(updated).catch(() => {});
+        void runtimeInstance.saveThread(updated).catch((err) => handleSaveFailure(err, updated.title));
         return updated;
       })
     );
-  }, []);
+  }, [handleSaveFailure]);
 
   const setActiveProjectId = useCallback((_id: string) => {
     // Single workspace session is canonical
@@ -2553,7 +2688,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           if (prev.some((t) => t.id === newThread.id)) return prev;
           return [newThread, ...prev];
         });
-        void runtimeInstance.saveThread(newThread).catch(() => {});
+        void runtimeInstance.saveThread(newThread).catch((err) => handleSaveFailure(err, newThread.title));
         const newTab: WorkbenchTab = {
           id: `chat:${threadId}`,
           kind: 'chat',
@@ -2574,7 +2709,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               if (t.id !== threadId) return t;
               const merged = Array.from(new Set([...(t.assignedSpecialists ?? []), ...recruitedSpecialists]));
               const updated = { ...t, assignedSpecialists: merged, updatedAt: Date.now() };
-              void runtimeInstance.saveThread(updated).catch(() => {});
+              void runtimeInstance.saveThread(updated).catch((err) => handleSaveFailure(err, updated.title));
               return updated;
             })
           );
@@ -2903,6 +3038,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         disconnectProvider,
         activeTeamId,
         setActiveTeamId,
+        persistenceError,
+        clearPersistenceError,
+        resolveAssociatedMaestroThread,
         createNewTeam,
         createNewMainTeamChat,
         createNewChat,

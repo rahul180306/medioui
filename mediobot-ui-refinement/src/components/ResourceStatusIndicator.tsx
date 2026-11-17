@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Cpu } from 'lucide-react';
 import type { ResourceGovernorStatus } from '../types';
+import { USE_OFFLINE_FIXTURE } from '../runtime/client';
 
 const DEFAULT_RESOURCE_STATUS: ResourceGovernorStatus = {
   memoryPressureState: 'nominal',
@@ -27,6 +28,10 @@ export const ResourceStatusIndicator: React.FC<{ isLight?: boolean }> = ({ isLig
   const [showTooltip, setShowTooltip] = useState(false);
 
   useEffect(() => {
+    if (USE_OFFLINE_FIXTURE) {
+      // In offline fixture mode, skip live network calls and use static deterministic telemetry
+      return;
+    }
     let mounted = true;
     const fetchStatus = async () => {
       try {
@@ -92,7 +97,7 @@ export const ResourceStatusIndicator: React.FC<{ isLight?: boolean }> = ({ isLig
             ? 'border-[#dcdce2] bg-[#f4f4f7] text-[#4b4a54]'
             : 'border-[#2b2b30] bg-[#1c1b20] text-neutral-300'
         }`}
-        title="MedioBot Resource Governor"
+        title={USE_OFFLINE_FIXTURE ? "MedioBot Resource Governor [Controlled demonstration · Simulated]" : "MedioBot Resource Governor"}
       >
         <span className={`w-1.5 h-1.5 rounded-full ${dotColor} shrink-0`} />
         <span className="text-[10px] tracking-tight">
@@ -170,6 +175,11 @@ export const ResourceStatusIndicator: React.FC<{ isLight?: boolean }> = ({ isLig
               <div className="flex justify-between">
                 <span className="text-neutral-400">Load Avg (1m):</span>
                 <span>{status?.telemetry?.loadAverage1m ?? '0.15'}</span>
+              </div>
+            )}
+            {USE_OFFLINE_FIXTURE && (
+              <div className="pt-1.5 mt-1 border-t border-white/10 text-[9.5px] text-cyan-400 font-sans text-center">
+                [Controlled demonstration · Simulated]
               </div>
             )}
           </div>

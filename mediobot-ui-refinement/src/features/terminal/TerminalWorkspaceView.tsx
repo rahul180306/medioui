@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import { useApp } from '../../state/AppContext';
 import { getTerminalSessionsForTeam } from '../../runtime/mockData';
+import { USE_OFFLINE_FIXTURE } from '../../runtime/client';
 
 type TabView = 'problems' | 'output' | 'debug' | 'terminal' | 'ports' | 'comments';
 
@@ -347,6 +348,18 @@ All systems nominal. No issues detected.
           },
         ]);
 
+        if (USE_OFFLINE_FIXTURE) {
+          appendLines([
+            {
+              id: `mb-run-res-${Date.now()}`,
+              type: 'stdout',
+              text: '[Controlled demonstration] Live model execution is disabled in safe offline fixture mode.',
+            },
+          ]);
+          setIsExecuting(false);
+          return;
+        }
+
         try {
           const res = await fetch('/api/gemini/execute', {
             method: 'POST',
@@ -448,6 +461,18 @@ Built-in Terminal Utilities:
     }
 
     // 3. Fallback: Execute via Server PTY/shell endpoint
+    if (USE_OFFLINE_FIXTURE) {
+      appendLines([
+        {
+          id: `out-${Date.now()}`,
+          type: 'stdout',
+          text: '[Controlled demonstration] Host subprocess execution is disabled in safe offline fixture mode.',
+        },
+      ]);
+      setIsExecuting(false);
+      return;
+    }
+
     try {
       const res = await fetch('/api/terminal/execute', {
         method: 'POST',
@@ -881,6 +906,17 @@ Built-in Terminal Utilities:
         </div>
       </div>
 
+      {USE_OFFLINE_FIXTURE && (
+        <div
+          role="status"
+          className={`px-3 py-1.5 text-[11px] border-b shrink-0 ${
+            isLight ? 'bg-amber-50 text-amber-900 border-amber-200' : 'bg-amber-950/30 text-amber-200 border-amber-900/40'
+          }`}
+        >
+          Controlled demonstration · Terminal history and output are simulated examples; no host process ran and no workspace checks were performed.
+        </div>
+      )}
+
       {/* 2. Main Workspace Body (Terminal Area on left + Sessions Rail on right) */}
       <div className="flex-1 flex min-h-0 overflow-hidden relative">
         {activeTab === 'terminal' ? (
@@ -895,6 +931,10 @@ Built-in Terminal Utilities:
             >
               {/* Output Lines */}
               {activeSession.lines.map((line) => {
+                const displayText = USE_OFFLINE_FIXTURE && line.type !== 'prompt'
+                  && !/^\[Controlled demonstration(?: · simulated)?\]/i.test(line.text)
+                  ? `[Controlled demonstration · simulated] ${line.text}`
+                  : line.text;
                 if (line.type === 'prompt') {
                   return (
                     <div key={line.id} className="flex items-center gap-2 my-0.5 select-text">
@@ -909,27 +949,27 @@ Built-in Terminal Utilities:
                       key={line.id}
                       className={`my-1 select-text ${isLight ? 'text-neutral-500' : 'text-neutral-400'}`}
                     >
-                      {line.text}
+                      {displayText}
                     </div>
                   );
                 }
                 if (line.type === 'success') {
                   return (
-                    <div key={line.id} className="text-emerald-500 my-1 whitespace-pre-wrap select-text">
-                      {line.text}
+                    <div key={line.id} className={`${USE_OFFLINE_FIXTURE ? (isLight ? 'text-amber-700' : 'text-amber-300') : 'text-emerald-500'} my-1 whitespace-pre-wrap select-text`}>
+                      {displayText}
                     </div>
                   );
                 }
                 if (line.type === 'stderr') {
                   return (
                     <div key={line.id} className="text-rose-400 my-1 whitespace-pre-wrap select-text">
-                      {line.text}
+                      {displayText}
                     </div>
                   );
                 }
                 return (
                   <div key={line.id} className="whitespace-pre-wrap my-0.5 opacity-90 select-text">
-                    {line.text}
+                    {displayText}
                   </div>
                 );
               })}
@@ -1078,16 +1118,16 @@ Built-in Terminal Utilities:
           /* Problems Tab Content */
           <div className="flex-1 p-6 flex flex-col items-center justify-center text-center">
             <CheckCircle2 size={36} className="text-emerald-500 mb-2 opacity-80" />
-            <h3 className="text-sm font-semibold">No problems have been detected in the workspace.</h3>
-            <p className="text-xs opacity-60 mt-1">TypeScript types, linting rules, and applet compilation are clean.</p>
+            <h3 className="text-sm font-semibold">No problems are recorded in this demonstration fixture.</h3>
+            <p className="text-xs opacity-60 mt-1">No workspace checks have been run.</p>
           </div>
         ) : activeTab === 'output' ? (
           /* Output Tab Content */
           <div className="flex-1 p-4 font-mono text-xs overflow-y-auto space-y-1 opacity-80 leading-relaxed">
-            <div className="text-neutral-500">[vite] dev server running at http://localhost:3000/</div>
-            <div className="text-neutral-500">[sqlite] uiState persistence and threads synchronized</div>
-            <div className="text-neutral-500">[mediobot] multi-agent orchestrator initialized with 6 specialists</div>
-            <div className="text-emerald-500">[terminal] PTY bridge ready on /api/terminal/execute</div>
+            <div className="text-neutral-500">[Controlled demonstration] Example Vite output for localhost:3000.</div>
+            <div className="text-neutral-500">[Controlled demonstration] Example persistence status; no SQLite operation was performed.</div>
+            <div className="text-neutral-500">[Controlled demonstration] Example specialist roster; no agents were started.</div>
+            <div className="text-neutral-500">[Controlled demonstration] Host PTY execution is unavailable in offline fixture mode.</div>
           </div>
         ) : activeTab === 'debug' ? (
           /* Debug Console Tab Content */

@@ -1,0 +1,48 @@
+{
+  "viewport": {
+    "width": 1470,
+    "height": 922
+  },
+  "unauthorizedRequests": [],
+  "authorizedAssetRequests": 3,
+  "requestLogs": [
+    {
+      "timestamp": "2026-11-14T11:59:05.313Z",
+      "method": "GET",
+      "url": "http://127.0.0.1:63483/",
+      "resourceType": "document",
+      "status": "allowed",
+      "reason": "permitted_static_asset"
+    },
+    {
+      "timestamp": "2026-11-14T11:59:05.327Z",
+      "method": "GET",
+      "url": "http://127.0.0.1:63483/assets/index-DOZKiaqk.js",
+      "resourceType": "script",
+      "status": "allowed",
+      "reason": "permitted_static_asset"
+    },
+    {
+      "timestamp": "2026-11-14T11:59:05.327Z",
+      "method": "GET",
+      "url": "http://127.0.0.1:63483/assets/index-DE741Sti.css",
+      "resourceType": "stylesheet",
+      "status": "allowed",
+      "reason": "permitted_static_asset"
+    }
+  ],
+  "consoleLogs": [],
+  "stepsCompleted": [
+    "Step 1: Loaded application root",
+    "Step 2: Verified DOM mounting into #root",
+    "Step 3: Opened Threads & History drawer",
+    "Step 4: Selected Main Team Chat 1",
+    "Step 5: Navigated to associated Maestro view",
+    "Step 6: Returned back to Main Chat",
+    "Step 7: Verified composer text input",
+    "Step 8: Verified demonstration mode labeling",
+    "Step 9: Saved visual screenshot to /Users/rahulkarthikt/Documents/mediobot/medioui/tests/screenshots/browser-e2e-1470x922.png",
+    "Step 10: Verified 0 unauthorized requests and zero network egress"
+  ],
+  "screenshotPath": "/Users/rahulkarthikt/Documents/mediobot/medioui/tests/screenshots/browser-e2e-1470x922.png"
+}

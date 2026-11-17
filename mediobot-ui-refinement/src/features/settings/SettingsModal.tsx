@@ -1,7 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useApp } from '../../state/AppContext';
-import { X, Settings, Cpu, Shield, Keyboard, Check, Layers, Zap, Sparkles, RefreshCw, CheckCircle2, Key, ExternalLink } from 'lucide-react';
+import { X, Settings, Cpu, Shield, Keyboard, Check, Layers, Zap, Sparkles } from 'lucide-react';
 import { ApprovalMode, ModelOption } from '../../types';
+import { runtimeInstance } from '../../runtime/client';
 
 export const SettingsModal: React.FC = () => {
   const {
@@ -13,27 +14,7 @@ export const SettingsModal: React.FC = () => {
   } = useApp();
 
   const [activeTab, setActiveTab] = useState<'general' | 'models' | 'runtime' | 'shortcuts'>('models');
-  const [geminiLatency, setGeminiLatency] = useState<number | null>(135);
-  const [isCheckingKey, setIsCheckingKey] = useState(false);
-
-  const checkConnection = async () => {
-    setIsCheckingKey(true);
-    try {
-      const res = await fetch('/api/gemini/status');
-      if (res.ok && res.headers.get('content-type')?.includes('application/json')) {
-        const data = await res.json();
-        setGeminiLatency(data.latencyMs || 128);
-      }
-    } catch {
-      // Keep optimistic
-    } finally {
-      setIsCheckingKey(false);
-    }
-  };
-
-  useEffect(() => {
-    checkConnection();
-  }, []);
+  const isOfflineFixture = runtimeInstance.runtimeKind === 'offline-fixture';
 
   const approvalOptions: ApprovalMode[] = [
     'Ask for approval',
@@ -42,11 +23,11 @@ export const SettingsModal: React.FC = () => {
   ];
 
   const geminiModels: { name: ModelOption; badge: string; tag: string; context: string }[] = [
-    { name: 'Gemini 3.8 Flash', badge: 'Default', tag: 'Fast Coding & Tool Loop', context: '1M tokens' },
-    { name: 'Gemini 3.1 Pro Preview', badge: 'Pro', tag: 'Deep Reasoning & Architecture', context: '2M tokens' },
-    { name: 'Gemini 3.1 Flash Lite', badge: 'Lite', tag: 'Low Latency Autocomplete', context: '1M tokens' },
-    { name: 'Gemini 3.8 Live', badge: 'Live', tag: 'Interactive Streaming & Audio', context: '128K tokens' },
-    { name: 'Gemini 3.1 Flash Image', badge: 'Vision', tag: 'UI Mockups & Image Gen', context: '1M tokens' },
+    { name: 'Gemini 3.8 Flash', badge: 'Example', tag: 'Display label only', context: 'availability unknown' },
+    { name: 'Gemini 3.1 Pro Preview', badge: 'Example', tag: 'Display label only', context: 'availability unknown' },
+    { name: 'Gemini 3.1 Flash Lite', badge: 'Example', tag: 'Display label only', context: 'availability unknown' },
+    { name: 'Gemini 3.8 Live', badge: 'Example', tag: 'Display label only', context: 'availability unknown' },
+    { name: 'Gemini 3.1 Flash Image', badge: 'Example', tag: 'Display label only', context: 'availability unknown' },
   ];
 
   return (
@@ -132,66 +113,42 @@ export const SettingsModal: React.FC = () => {
                 </p>
               </div>
 
-              {/* API Key Configuration & Storage Guide */}
+              {/* Runtime/provider status is derived from the selected runtime; no status probe is issued here. */}
               <div className="p-3.5 rounded-xl bg-[#1d1d23] border border-[#2c2b36] space-y-2.5">
                 <div className="flex items-center gap-2">
-                  <Key className="w-4 h-4 text-emerald-400" />
-                  <span className="font-semibold text-neutral-100 text-xs">Gemini API Key Configuration</span>
+                  <Shield className="w-4 h-4 text-neutral-400" />
+                  <span className="font-semibold text-neutral-100 text-xs">Provider connection status</span>
                 </div>
                 <p className="text-[11.5px] text-neutral-400 leading-relaxed">
-                  Your Gemini API key is securely managed on the server via <code className="text-neutral-200 bg-[#16161b] px-1.5 py-0.5 rounded font-mono">process.env.GEMINI_API_KEY</code>. In AI Studio, you can view or configure your key in the <strong className="text-neutral-200 font-semibold">Settings &gt; Secrets</strong> panel.
+                  {isOfflineFixture
+                    ? 'No provider is connected in the selected offline fixture. Credentials are not read, stored, or tested by this runtime.'
+                    : 'The selected backend runtime does not expose verified provider connection status in this panel.'}
                 </p>
-                <div className="p-2.5 rounded-lg bg-[#16161b] border border-[#24232c] flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <span className="w-2 h-2 rounded-full bg-emerald-400 shadow-[0_0_8px_#34d399]" />
-                    <span className="text-[11.5px] text-neutral-200 font-medium">GEMINI_API_KEY</span>
-                    <span className="text-[10px] text-emerald-400 bg-emerald-950/60 border border-emerald-800/60 px-1.5 py-0.5 rounded font-medium">
-                      Active
-                    </span>
-                  </div>
-                  <button
-                    onClick={checkConnection}
-                    disabled={isCheckingKey}
-                    className="flex items-center gap-1.5 text-[11px] text-neutral-300 hover:text-white bg-[#25242d] hover:bg-[#32313b] border border-[#353442] px-2.5 py-1 rounded-lg transition-colors cursor-pointer"
-                  >
-                    <RefreshCw className={`w-3 h-3 ${isCheckingKey ? 'animate-spin text-cyan-400' : 'text-neutral-400'}`} />
-                    <span>{isCheckingKey ? 'Checking...' : 'Test Connection & Refresh'}</span>
-                  </button>
+                <div className="p-2.5 rounded-lg bg-[#16161b] border border-[#24232c] flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-neutral-500" />
+                  <span className="text-[11.5px] text-neutral-200 font-medium">
+                    {isOfflineFixture ? 'Not connected · offline fixture' : 'Connection status not verified'}
+                  </span>
                 </div>
               </div>
 
-              {/* Provider Status Card: Google Gemini */}
+              {/* Model names below are UI labels, not a verified provider catalog. */}
               <div className="p-3.5 rounded-xl bg-[#1d1d23] border border-[#2c2b36] space-y-3">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <span className="w-2 h-2 rounded-full bg-emerald-400 shadow-[0_0_8px_#34d399]" />
-                    <span className="font-semibold text-neutral-100 text-xs">Google Gemini Provider</span>
-                    <span className="text-[10px] text-emerald-400 bg-emerald-950/60 border border-emerald-800/60 px-1.5 py-0.5 rounded font-medium">
-                      Connected ({geminiLatency || 128}ms)
-                    </span>
+                    <span className="w-2 h-2 rounded-full bg-neutral-500" />
+                    <span className="font-semibold text-neutral-100 text-xs">Model labels</span>
                   </div>
-                  <span className="text-[10.5px] text-cyan-400 font-mono">@google/genai SDK v2.4</span>
                 </div>
 
                 <div className="text-[11.5px] text-neutral-400 space-y-1 bg-[#16161b] p-2.5 rounded-lg border border-[#24232c]">
-                  <div className="flex justify-between">
-                    <span>API Transport:</span>
-                    <span className="text-neutral-200 font-mono">Server-side proxy (/api/gemini/generate)</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span>Telemetry Header:</span>
-                    <span className="text-neutral-200 font-mono">User-Agent: aistudio-build</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span>Model Catalog:</span>
-                    <span className="text-emerald-400 font-medium">5 Official Gemini Models Ready</span>
-                  </div>
+                  <span>These names are display examples only. Provider availability, credentials, and model capabilities have not been checked.</span>
                 </div>
 
                 {/* Available Gemini Models */}
                 <div>
                   <div className="text-[11px] font-semibold text-neutral-400 uppercase tracking-wider mb-2">
-                    Verified Gemini Models
+                    Example model names
                   </div>
                   <div className="space-y-1.5">
                     {geminiModels.map((m) => (
@@ -212,12 +169,12 @@ export const SettingsModal: React.FC = () => {
                             </span>
                           </div>
                           <div className="text-[11px] text-neutral-400 mt-0.5">
-                            {m.tag} • {m.context}
+                            {m.tag} · {m.context}
                           </div>
                         </div>
 
                         <div className="shrink-0">
-                          {model === m.name && <Check className="w-4 h-4 text-emerald-400 stroke-[2.2]" />}
+                          {model === m.name && <Check className="w-4 h-4 text-neutral-300 stroke-[2.2]" />}
                         </div>
                       </div>
                     ))}
@@ -231,8 +188,13 @@ export const SettingsModal: React.FC = () => {
             <div className="space-y-4">
               <div>
                 <label className="block text-neutral-400 font-medium mb-1.5">
-                  Default Agent Model
+                  {isOfflineFixture ? 'Default Agent Model Label' : 'Default Agent Model'}
                 </label>
+                {isOfflineFixture && (
+                  <p className="mb-2 text-[11px] leading-relaxed text-neutral-500">
+                    Display preference only. The offline fixture does not send requests to any model.
+                  </p>
+                )}
                 <div className="grid grid-cols-2 gap-2">
                   {geminiModels.map((opt) => (
                     <button
@@ -280,7 +242,7 @@ export const SettingsModal: React.FC = () => {
               <div className="p-3.5 bg-[#121216] border border-[#26262e] rounded-xl space-y-3">
                 <div className="flex items-center gap-2 text-neutral-200 font-semibold">
                   <Layers className="w-4 h-4 text-purple-400" />
-                  <span>Target Architecture Pipeline</span>
+                  <span>Planned Integration Architecture</span>
                 </div>
                 <div className="font-mono text-[11px] leading-relaxed text-neutral-400 bg-[#16161b] p-3 rounded border border-[#222228] select-all">
                   Coding Chat UI (V0 Standing App)<br />
@@ -294,18 +256,20 @@ export const SettingsModal: React.FC = () => {
                   Perception + Vision + Kernel + Browser/OS
                 </div>
                 <p className="text-[11px] text-neutral-400 leading-normal">
-                  In Version 0, the UI communicates with <code className="text-neutral-200">MockRuntime</code>. When packaging into your Mediobot repository as Version 1, simply swap <code className="text-neutral-200">MockRuntime</code> with <code className="text-neutral-200">MediobotRuntime</code> without modifying any UI components.
+                  This diagram is a target design, not a report of active connections. The selected runtime is {isOfflineFixture ? 'an offline fixture; provider, host terminal, and computer-use execution are unavailable.' : 'a backend client; provider and execution readiness are not verified by this panel.'}
                 </p>
               </div>
 
               <div className="space-y-2 text-xs">
                 <div className="flex items-center justify-between py-1.5 border-b border-[#24242c]">
-                  <span className="text-neutral-400">Current Bridge Status</span>
-                  <span className="font-mono text-emerald-400">MockRuntime Ready (Standalone)</span>
+                  <span className="text-neutral-400">Selected runtime</span>
+                  <span className="font-mono text-neutral-300">
+                    {isOfflineFixture ? 'Offline fixture · simulated only' : 'Backend client · readiness unverified'}
+                  </span>
                 </div>
                 <div className="flex items-center justify-between py-1.5 border-b border-[#24242c]">
-                  <span className="text-neutral-400">ComputerUse Protocol Version</span>
-                  <span className="font-mono text-neutral-300">v1.0-draft</span>
+                  <span className="text-neutral-400">Computer-use integration</span>
+                  <span className="font-mono text-neutral-300">Planned · not active</span>
                 </div>
               </div>
             </div>

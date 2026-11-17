@@ -15,6 +15,7 @@ import type {
 } from "../types";
 
 export type WorkspaceStatus = "EMPTY" | "OPENING" | "OPEN" | "SWITCHING" | "UNAVAILABLE";
+export type RuntimeKind = "backend" | "offline-fixture";
 
 export interface WorkspaceSession {
   readonly workspaceId: string;
@@ -151,6 +152,7 @@ export interface TurnOptions {
 }
 
 export interface IMediobotRuntime {
+  readonly runtimeKind: RuntimeKind;
   startTurn(threadId: string, prompt: string, options: TurnOptions, turnId?: string): Promise<string>;
   resumeTurn?(threadId: string, turnId: string): void;
   resumeTask?(taskId: string, threadId: string, turnId: string): Promise<void>;
@@ -167,6 +169,7 @@ export interface IMediobotRuntime {
   loadThreads(workspaceId?: string | null): Promise<Thread[]>;
   loadThread?(threadId: string): Promise<Thread>;
   saveThread(thread: Thread): Promise<Thread>;
+  saveThreadsAtomic(threads: Thread[]): Promise<void>;
   deleteThread(threadId: string): Promise<void>;
   renameThread(threadId: string, title: string): Promise<void>;
   listFiles(projectId: string, path?: string): Promise<FileNode[]>;

@@ -1,6 +1,16 @@
 import type { ToolExecutionData } from '../../types';
 
 export function getOutcomeBadge(tool: ToolExecutionData): { label: string; className: string } | null {
+  // Controlled fixtures may use successful in-memory operations to demonstrate
+  // the UI. Keep their explicit simulation label ahead of generic success
+  // badges such as "check exited 0" or "saved".
+  if (tool.outcomeBadge && /controlled demonstration|simulated/i.test(tool.outcomeBadge)) {
+    return {
+      label: tool.outcomeBadge,
+      className: 'text-[10px] text-amber-300 bg-amber-950/40 border border-amber-800/50 px-1.5 py-0.5 rounded font-mono',
+    };
+  }
+
   if (tool.recoveredFromExecution) {
     return {
       label: typeof tool.exitCode === 'number' ? `↺ restored · exit ${tool.exitCode}` : '↺ restored result',
@@ -8,15 +18,21 @@ export function getOutcomeBadge(tool: ToolExecutionData): { label: string; class
     };
   }
   if (tool.isVerification) {
-    if (tool.verificationStatus === 'command-succeeded' || (tool.status === 'success' && tool.verificationStatus !== 'command-failed')) {
+    if (tool.verificationStatus === 'command-succeeded' || (tool.status === 'success' && tool.verificationStatus == null)) {
       return {
         label: '✓ check exited 0',
         className: 'text-[10px] text-emerald-400 bg-emerald-950/60 border border-emerald-700/60 px-1.5 py-0.5 rounded font-mono font-semibold',
       };
     }
-    if (tool.status === 'cancelled' || tool.verificationStatus === 'unverified') {
+    if (tool.status === 'cancelled') {
       return {
         label: 'cancelled',
+        className: 'text-[10px] text-neutral-400 bg-neutral-900 border border-neutral-700/50 px-1.5 py-0.5 rounded font-mono',
+      };
+    }
+    if (tool.verificationStatus === 'unverified') {
+      return {
+        label: 'not verified',
         className: 'text-[10px] text-neutral-400 bg-neutral-900 border border-neutral-700/50 px-1.5 py-0.5 rounded font-mono',
       };
     }

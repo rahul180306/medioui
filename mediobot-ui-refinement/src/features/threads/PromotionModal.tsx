@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { X, ArrowUpRight, AlertCircle, FileCode, Check } from 'lucide-react';
 import { useApp } from '../../state/AppContext';
+import { USE_OFFLINE_FIXTURE } from '../../runtime/client';
 export const MAX_PROMOTION_TOKENS = 12000;
 export function estimateTokenCount(text: string): number {
   return Math.ceil((text || '').length / 4);
@@ -53,6 +54,24 @@ export const PromotionModal: React.FC<PromotionModalProps> = ({
 
     setSubmitting(true);
     setError(null);
+
+    if (USE_OFFLINE_FIXTURE) {
+      const simulatedPromotion = {
+        id: `promo-sim-${Date.now()}`,
+        sourceThreadId,
+        sourceAgentId,
+        summary: summary.trim(),
+        artifactRefs,
+        evidenceRefs,
+        tokenCount,
+        status: 'promoted',
+        isControlledDemonstration: true,
+      };
+      onSuccess?.(simulatedPromotion);
+      onClose();
+      setSubmitting(false);
+      return;
+    }
 
     try {
       const idempotencyKey = `promo-${sourceThreadId}-${Date.now()}`;

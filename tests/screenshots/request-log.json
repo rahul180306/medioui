@@ -1,0 +1,50 @@
+[
+  {
+    "timestamp": "2026-11-14T11:58:57.141Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:63476/",
+    "resourceType": "document",
+    "status": "allowed",
+    "reason": "permitted_static_asset"
+  },
+  {
+    "timestamp": "2026-11-14T11:58:57.159Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:63476/assets/index-DOZKiaqk.js",
+    "resourceType": "script",
+    "status": "allowed",
+    "reason": "permitted_static_asset"
+  },
+  {
+    "timestamp": "2026-11-14T11:58:57.159Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:63476/assets/index-DE741Sti.css",
+    "resourceType": "stylesheet",
+    "status": "allowed",
+    "reason": "permitted_static_asset"
+  },
+  {
+    "timestamp": "2026-11-14T11:58:59.442Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:63476/",
+    "resourceType": "document",
+    "status": "allowed",
+    "reason": "permitted_static_asset"
+  },
+  {
+    "timestamp": "2026-11-14T11:58:59.452Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:63476/assets/index-DOZKiaqk.js",
+    "resourceType": "script",
+    "status": "allowed",
+    "reason": "permitted_static_asset"
+  },
+  {
+    "timestamp": "2026-11-14T11:58:59.453Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:63476/assets/index-DE741Sti.css",
+    "resourceType": "stylesheet",
+    "status": "allowed",
+    "reason": "permitted_static_asset"
+  }
+]
