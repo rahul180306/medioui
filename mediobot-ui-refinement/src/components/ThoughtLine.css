@@ -13,11 +13,13 @@
   display: inline-flex;
   flex-direction: column;
   align-items: flex-start;
+  max-width: 100%;
+  min-width: 0;
   color: var(--tl-color);
   font-family: inherit;
   font-size: var(--tl-font);
   font-weight: 500;
-  line-height: 1.2;
+  line-height: 1.25;
 }
 
 .thought-line--light {
@@ -35,6 +37,7 @@
   display: inline-flex;
   align-items: center;
   gap: 0.3em;
+  max-width: 100%;
   margin: 0;
   padding: 0;
   border: 0;
@@ -52,12 +55,18 @@
   -webkit-tap-highlight-color: transparent;
 }
 
+.thought-line__head[data-toggle]:focus-visible {
+  outline: 1px solid currentColor;
+  outline-offset: 3px;
+  border-radius: 4px;
+}
+
 .thought-line__glyph {
   display: inline-flex;
   flex: none;
-  width: 1.1em;
-  height: 1.1em;
-  margin-right: 0.2em;
+  width: 1.05em;
+  height: 1.05em;
+  margin-right: 0.15em;
   color: var(--tl-glyph);
 }
 
@@ -68,8 +77,8 @@
 }
 
 .thought-line__dot {
-  width: 0.5em;
-  height: 0.5em;
+  width: 0.48em;
+  height: 0.48em;
   margin: auto;
   border-radius: 50%;
   background: currentColor;
@@ -77,11 +86,15 @@
 
 .thought-line__label {
   display: inline-grid;
+  min-width: 0;
 }
 
 .thought-line__text {
   grid-area: 1 / 1;
   width: max-content;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
   opacity: 0;
   filter: blur(var(--tl-blur));
   transition:
@@ -125,6 +138,9 @@
 }
 
 .thought-line__timer {
+  flex: none;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.9em;
   font-variant-numeric: tabular-nums;
   opacity: var(--tl-timer);
   transition:
@@ -138,6 +154,7 @@
 
 .thought-line__chevron {
   display: inline-flex;
+  flex: none;
   margin-left: 0.1em;
   opacity: 0;
   transition:
@@ -165,7 +182,7 @@
 .thought-line__trace {
   display: grid;
   grid-template-rows: 0fr;
-  width: 0;
+  width: 100%;
   min-width: 100%;
   transition: grid-template-rows var(--tl-settle) var(--tl-ease-out);
 }
@@ -176,6 +193,7 @@
 
 .thought-line__fold {
   min-height: 0;
+  min-width: 0;
   overflow-x: visible;
   overflow-y: clip;
 }
@@ -183,18 +201,18 @@
 .thought-line__steps {
   display: flex;
   flex-direction: column;
-  gap: 0.45em;
-  width: max-content;
-  padding: 0.6em 0 0.2em 1.6em;
-  font-size: 0.875em;
+  gap: 0.4em;
+  max-width: 100%;
+  padding: 0.55em 0 0.2em 1.55em;
+  font-size: 0.89em;
   font-weight: 400;
-  white-space: nowrap;
 }
 
 .thought-line__step {
   display: flex;
   align-items: center;
   gap: 0.5em;
+  min-width: 0;
   opacity: 1;
   transform: translateY(0);
   transition:
@@ -215,13 +233,13 @@
   place-items: center;
   width: 1em;
   height: 1em;
-  opacity: 0.55;
+  opacity: 0.6;
 }
 
 .thought-line__pulse {
   display: block;
-  width: 0.4em;
-  height: 0.4em;
+  width: 0.42em;
+  height: 0.42em;
   border-radius: 50%;
   background: currentColor;
   animation: thought-line-pulse 1.6s var(--tl-ease-in-out) infinite;
@@ -230,7 +248,7 @@
 @keyframes thought-line-pulse {
   0%,
   100% {
-    opacity: 0.55;
+    opacity: 0.5;
   }
 
   50% {
@@ -239,16 +257,20 @@
 }
 
 .thought-line__step-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   transition: opacity var(--tl-settle) ease;
 }
 
 .thought-line__step[data-done] .thought-line__step-text {
-  opacity: 0.55;
+  opacity: 0.58;
 }
 
 .thought-line__custom-fold {
-  padding: 0.5em 0 0.2em 1.6em;
-  font-size: 0.85em;
+  padding: 0.35em 0 0.15em 1.45em;
+  font-size: 0.92em;
   line-height: 1.5;
 }
 

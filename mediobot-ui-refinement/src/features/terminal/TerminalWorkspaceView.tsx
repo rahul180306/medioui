@@ -21,6 +21,7 @@ import {
 import { useApp } from '../../state/AppContext';
 import { getTerminalSessionsForTeam } from '../../runtime/mockData';
 import { USE_OFFLINE_FIXTURE } from '../../runtime/client';
+import CallChip, { type CallChipStatus } from '../../components/CallChip';
 
 type TabView = 'problems' | 'output' | 'debug' | 'terminal' | 'ports' | 'comments';
 
@@ -89,6 +90,14 @@ export const TerminalWorkspaceView: React.FC<TerminalWorkspaceViewProps> = ({ on
   const [showShellDropdown, setShowShellDropdown] = useState(false);
   const [showMoreMenu, setShowMoreMenu] = useState(false);
   const [isMaximized, setIsMaximized] = useState(false);
+  const [lastCommandRun, setLastCommandRun] = useState<{
+    cmd: string;
+    name: string;
+    argument: string;
+    status: CallChipStatus;
+    startedAt: number;
+    durationMs?: number;
+  } | null>(null);
 
   const inputRef = useRef<HTMLInputElement>(null);
   const terminalScrollRef = useRef<HTMLDivElement>(null);
@@ -156,6 +165,7 @@ export const TerminalWorkspaceView: React.FC<TerminalWorkspaceViewProps> = ({ on
     setSessions((prev) =>
       prev.map((s) => (s.id === activeSessionId ? { ...s, lines: [] } : s))
     );
+    setLastCommandRun(null);
     setShowMoreMenu(false);
     setTimeout(focusInput, 50);
   };
@@ -210,6 +220,23 @@ export const TerminalWorkspaceView: React.FC<TerminalWorkspaceViewProps> = ({ on
     const rootCommand = parts[0].toLowerCase();
     const subCommand = parts[1]?.toLowerCase();
     const restArgs = parts.slice(2).join(' ');
+    const runStartPerf = performance.now();
+    const chipArg = trimmed.slice(parts[0].length).trim() || trimmed;
+    setLastCommandRun({
+      cmd: trimmed,
+      name: rootCommand,
+      argument: chipArg,
+      status: 'running',
+      startedAt: Date.now(),
+    });
+
+    const settleCommand = (status: 'done' | 'error') => {
+      const elapsed = Math.max(1, Math.round(performance.now() - runStartPerf));
+      setLastCommandRun((prev) =>
+        prev && prev.cmd === trimmed ? { ...prev, status, durationMs: elapsed } : prev
+      );
+      setIsExecuting(false);
+    };
 
     const appendLines = (newLines: TerminalLine[]) => {
       setSessions((prev) =>
@@ -251,7 +278,7 @@ EXAMPLES:
 `,
           },
         ]);
-        setIsExecuting(false);
+        settleCommand('done');
         return;
       }
 
@@ -274,7 +301,7 @@ Active Orchestrator: Maestro | Concurrency: 4 worker leases | Status: READY
 `,
           },
         ]);
-        setIsExecuting(false);
+        settleCommand('done');
         return;
       }
 
@@ -294,7 +321,7 @@ Mediobot Registered Agents (${agents.length}):
 `,
           },
         ]);
-        setIsExecuting(false);
+        settleCommand('done');
         return;
       }
 
@@ -316,7 +343,7 @@ All systems nominal. No issues detected.
 `,
           },
         ]);
-        setIsExecuting(false);
+        settleCommand('done');
         return;
       }
 
@@ -328,7 +355,7 @@ All systems nominal. No issues detected.
             text: 'Mediobot CLI v2.4.0 (Build 2026.11-rc4 darwin-arm64)',
           },
         ]);
-        setIsExecuting(false);
+        settleCommand('done');
         return;
       }
 
@@ -356,7 +383,7 @@ All systems nominal. No issues detected.
               text: '[Controlled demonstration] Live model execution is disabled in safe offline fixture mode.',
             },
           ]);
-          setIsExecuting(false);
+          settleCommand('done');
           return;
         }
 
@@ -375,6 +402,7 @@ All systems nominal. No issues detected.
               text: responseText,
             },
           ]);
+          settleCommand(res.ok ? 'done' : 'error');
         } catch {
           appendLines([
             {
@@ -383,8 +411,8 @@ All systems nominal. No issues detected.
               text: `[Maestro] Task queued: "${query}". Agents ready for execution.`,
             },
           ]);
+          settleCommand('error');
         }
-        setIsExecuting(false);
         return;
       }
 
@@ -395,7 +423,7 @@ All systems nominal. No issues detected.
           text: `Unknown mediobot command: "${subCommand}". Type "mediobot --help" for available commands.`,
         },
       ]);
-      setIsExecuting(false);
+      settleCommand('error');
       return;
     }
 
@@ -410,7 +438,7 @@ All systems nominal. No issues detected.
       appendLines([
         { id: `pwd-${Date.now()}`, type: 'stdout', text: '/Users/rahulkarthikt/mediobot' },
       ]);
-      setIsExecuting(false);
+      settleCommand('done');
       return;
     }
 
@@ -418,7 +446,7 @@ All systems nominal. No issues detected.
       appendLines([
         { id: `whoami-${Date.now()}`, type: 'stdout', text: 'rahulkarthikt' },
       ]);
-      setIsExecuting(false);
+      settleCommand('done');
       return;
     }
 
@@ -426,7 +454,7 @@ All systems nominal. No issues detected.
       appendLines([
         { id: `date-${Date.now()}`, type: 'stdout', text: new Date().toString() },
       ]);
-      setIsExecuting(false);
+      settleCommand('done');
       return;
     }
 
@@ -434,7 +462,7 @@ All systems nominal. No issues detected.
       appendLines([
         { id: `echo-${Date.now()}`, type: 'stdout', text: parts.slice(1).join(' ') },
       ]);
-      setIsExecuting(false);
+      settleCommand('done');
       return;
     }
 
@@ -456,7 +484,7 @@ Built-in Terminal Utilities:
 `,
         },
       ]);
-      setIsExecuting(false);
+      settleCommand('done');
       return;
     }
 
@@ -469,7 +497,7 @@ Built-in Terminal Utilities:
           text: '[Controlled demonstration] Host subprocess execution is disabled in safe offline fixture mode.',
         },
       ]);
-      setIsExecuting(false);
+      settleCommand('done');
       return;
     }
 
@@ -508,6 +536,8 @@ Built-in Terminal Utilities:
         }
       }
       appendLines(outLines);
+      const isErr = typeof data.exitCode === 'number' ? data.exitCode !== 0 : Boolean(data.stderr && !data.stdout);
+      settleCommand(isErr ? 'error' : 'done');
     } catch {
       // Offline / fallback response
       if (rootCommand === 'ls') {
@@ -518,6 +548,7 @@ Built-in Terminal Utilities:
             text: 'node_modules/  package.json  public/  server.ts  src/  tsconfig.json  vite.config.ts',
           },
         ]);
+        settleCommand('done');
       } else {
         appendLines([
           {
@@ -526,9 +557,8 @@ Built-in Terminal Utilities:
             text: `zsh: command not found: ${rootCommand}. Type "mediobot --help" for available commands.`,
           },
         ]);
+        settleCommand('error');
       }
-    } finally {
-      setIsExecuting(false);
     }
   };
 
@@ -778,6 +808,36 @@ Built-in Terminal Utilities:
 
         {/* Right Action Icons (+ dropdown, ..., split, X close) */}
         <div className="flex items-center gap-1.5 shrink-0 relative">
+          {lastCommandRun && (
+            <div className="hidden md:flex items-center mr-1 max-w-[260px]">
+              <CallChip
+                icon="terminal"
+                name={lastCommandRun.name}
+                argument={lastCommandRun.argument}
+                status={lastCommandRun.status}
+                expectedMs={1200}
+                startedAt={lastCommandRun.startedAt}
+                durationMs={lastCommandRun.durationMs}
+                size={24}
+                radius={6}
+                color={isLight ? '#18181b' : '#e4e4e7'}
+                surfaceColor={isLight ? '#ffffff' : '#25252c'}
+                borderColor={isLight ? 'rgba(0, 0, 0, 0.08)' : 'rgba(255, 255, 255, 0.08)'}
+                progressColor={isLight ? '#09090b' : '#ffffff'}
+                progressOpacity={isLight ? 0.06 : 0.08}
+                doneColor={isLight ? '#16a34a' : '#22c55e'}
+                errorColor={isLight ? '#dc2626' : '#ef4444'}
+                washOpacity={0.14}
+                shake={4}
+                showTimer
+                onRetry={
+                  lastCommandRun.status === 'error'
+                    ? () => void handleExecute(lastCommandRun.cmd)
+                    : undefined
+                }
+              />
+            </div>
+          )}
           {/* + New Terminal Button with chevron */}
           <div className="flex items-center rounded hover:bg-neutral-500/10 transition-colors">
             <button

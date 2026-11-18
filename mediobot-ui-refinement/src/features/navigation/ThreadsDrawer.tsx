@@ -14,6 +14,7 @@ import {
   Trash2,
   RotateCcw,
   Users,
+  Check,
 } from 'lucide-react';
 import { useApp } from '../../state/AppContext';
 import { FileNode } from '../../types';
@@ -27,7 +28,11 @@ import { MediobotAvatar } from '../threads/MediobotAvatar';
 import RubberSegment from '../../components/RubberSegment';
 import AnimatedList from '../../components/AnimatedList';
 import FuseButton from '../../components/FuseButton';
+import HoldButton from '../../components/HoldButton';
 import { SpecialistStatusIndicator, getSpecialistStatus } from './NavRail';
+
+const DELETE_DURATION_MS = 7000;
+const DELETE_SETTLE_MS = 450;
 
 const DEFAULT_PROJECT_TREE: FileNode[] = [];
 
@@ -63,7 +68,6 @@ export const ThreadsDrawer: React.FC = () => {
     createNewTeam,
     createNewMainTeamChat,
     activeTeamId,
-    setActiveTeamId,
     setActiveModal,
     openLibrary,
     agents,
@@ -210,8 +214,8 @@ export const ThreadsDrawer: React.FC = () => {
     isFolder: boolean;
   } | null>(null);
 
-  // Parallel deleting threads state & timers
-  const [deletingThreadIds, setDeletingThreadIds] = useState<Set<string>>(new Set());
+  // Parallel deleting threads state (threadId -> startedAt timestamp) & fallback timers
+  const [deletingThreads, setDeletingThreads] = useState<Record<string, number>>({});
   const deleteTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
 
   // Clean up all pending deletion timers on unmount
@@ -227,9 +231,10 @@ export const ThreadsDrawer: React.FC = () => {
       const timer = deleteTimersRef.current.get(threadId);
       if (timer) clearTimeout(timer);
       deleteTimersRef.current.delete(threadId);
-      setDeletingThreadIds((prev) => {
-        const next = new Set(prev);
-        next.delete(threadId);
+      setDeletingThreads((prev) => {
+        if (!(threadId in prev)) return prev;
+        const next = { ...prev };
+        delete next[threadId];
         return next;
       });
       deleteThread(threadId);
@@ -237,16 +242,30 @@ export const ThreadsDrawer: React.FC = () => {
     [deleteThread]
   );
 
+  const finishDeleteThread = useCallback(
+    (threadId: string) => {
+      const existing = deleteTimersRef.current.get(threadId);
+      if (existing) clearTimeout(existing);
+      const settleTimer = setTimeout(() => {
+        confirmDeleteThread(threadId);
+      }, DELETE_SETTLE_MS);
+      deleteTimersRef.current.set(threadId, settleTimer);
+    },
+    [confirmDeleteThread]
+  );
+
   const startDeletingThread = useCallback(
     (threadId: string) => {
-      setDeletingThreadIds((prev) => {
-        const next = new Set(prev);
-        next.add(threadId);
-        return next;
-      });
+      if (deleteTimersRef.current.has(threadId)) return;
+      const startedAt = Date.now();
+      setDeletingThreads((prev) => ({
+        ...prev,
+        [threadId]: startedAt,
+      }));
+      // Fallback timer ensures deletion completes even if user switches away from History tab mid-animation
       const timer = setTimeout(() => {
         confirmDeleteThread(threadId);
-      }, 2500);
+      }, DELETE_DURATION_MS + DELETE_SETTLE_MS + 100);
       deleteTimersRef.current.set(threadId, timer);
     },
     [confirmDeleteThread]
@@ -256,9 +275,10 @@ export const ThreadsDrawer: React.FC = () => {
     const timer = deleteTimersRef.current.get(threadId);
     if (timer) clearTimeout(timer);
     deleteTimersRef.current.delete(threadId);
-    setDeletingThreadIds((prev) => {
-      const next = new Set(prev);
-      next.delete(threadId);
+    setDeletingThreads((prev) => {
+      if (!(threadId in prev)) return prev;
+      const next = { ...prev };
+      delete next[threadId];
       return next;
     });
   }, []);
@@ -468,27 +488,15 @@ export const ThreadsDrawer: React.FC = () => {
     }
   };
 
-  // Deduplicate threads by unique id and scope strictly to the active team environment
+  // Deduplicate threads by unique id and keep only Main Team conversations in History
   const uniqueThreads = useMemo(() => {
     const seen = new Set<string>();
     return (threads || []).filter((t) => {
       if (!t.id || seen.has(t.id)) return false;
-      if (activeTeamId && t.teamId && t.teamId !== activeTeamId) return false;
+      if (t.threadType !== 'team') return false;
       seen.add(t.id);
       return true;
     });
-  }, [threads, activeTeamId]);
-
-  const teamsList = useMemo(() => {
-    const map = new Map<string, { id: string; name: string }>();
-    for (const t of threads) {
-      if (t.teamId && !map.has(t.teamId)) {
-        const clean = t.teamId.replace(/^team-/, '').replace(/-\w{6,8}$/, '');
-        const name = clean.charAt(0).toUpperCase() + clean.slice(1);
-        map.set(t.teamId, { id: t.teamId, name: `Team ${name}` });
-      }
-    }
-    return Array.from(map.values());
   }, [threads]);
 
   const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>(() => {
@@ -525,71 +533,26 @@ export const ThreadsDrawer: React.FC = () => {
       }>;
     }>();
 
-    const standardAgents = [
-      { id: 'team', name: 'Main Team', isTeam: true, isMaestro: false },
-      { id: 'maestro', name: 'Maestro', isTeam: false, isMaestro: true },
-      { id: 'cody', name: 'Cody', isTeam: false, isMaestro: false },
-      { id: 'tester', name: 'Tester', isTeam: false, isMaestro: false },
-      { id: 'research', name: 'Research', isTeam: false, isMaestro: false },
-      { id: 'doc', name: 'Doc', isTeam: false, isMaestro: false },
-      { id: 'scraapy', name: 'Scraapy', isTeam: false, isMaestro: false },
-      { id: 'vision', name: 'Vision', isTeam: false, isMaestro: false },
-    ];
-
-    for (const sa of standardAgents) {
-      groupsMap.set(sa.id, {
-        agentId: sa.id,
-        agentName: sa.name,
-        isTeam: sa.isTeam,
-        isMaestro: sa.isMaestro,
-        threads: [],
-      });
-    }
-
-    for (const agent of agents) {
-      const cleanId = normalizeMediobotId(agent.id);
-      if (!groupsMap.has(cleanId)) {
-        groupsMap.set(cleanId, {
-          agentId: cleanId,
-          agentName: agent.name,
-          isTeam: false,
-          isMaestro: cleanId === 'maestro',
-          threads: [],
-        });
-      }
-    }
+    groupsMap.set('team', {
+      agentId: 'team',
+      agentName: 'Main Team',
+      isTeam: true,
+      isMaestro: false,
+      threads: [],
+    });
 
     for (const t of uniqueThreads) {
-      const isTeam = t.threadType === 'team';
-      let targetAgentId = 'team';
-      if (!isTeam) {
-        const rawOwner = t.specialistId || t.ownerAgent || (t as any).owner_agent || 'maestro';
-        const cleanOwner = normalizeMediobotId(rawOwner) || 'maestro';
-        targetAgentId = cleanOwner;
-      }
-
-      if (!groupsMap.has(targetAgentId)) {
-        const matchingAgent = agents.find((a) => normalizeMediobotId(a.id) === targetAgentId);
-        groupsMap.set(targetAgentId, {
-          agentId: targetAgentId,
-          agentName: matchingAgent?.name || (targetAgentId.charAt(0).toUpperCase() + targetAgentId.slice(1)),
-          isTeam: false,
-          isMaestro: targetAgentId === 'maestro',
-          threads: [],
-        });
-      }
-
-      const group = groupsMap.get(targetAgentId)!;
+      if (t.threadType !== 'team') continue;
+      const group = groupsMap.get('team')!;
       const cleanTitle = t.title
-        .replace(new RegExp(`^${group.agentName}\\s*·\\s*`, 'i'), '')
-        .replace(new RegExp(`^${group.agentId}\\s*·\\s*`, 'i'), '')
+        .replace(/^Main Team\s*·\s*/i, '')
         .trim() || t.title;
 
       group.threads.push({
         id: t.id,
         title: t.title,
         cleanTitle,
-        specialistId: isTeam ? null : targetAgentId,
+        specialistId: null,
         updatedAt: t.updatedAt ?? 0,
       });
     }
@@ -598,8 +561,8 @@ export const ThreadsDrawer: React.FC = () => {
       group.threads.sort((a, b) => b.updatedAt - a.updatedAt);
     }
 
-    return Array.from(groupsMap.values()).filter((g) => g.threads.length > 0 || g.isTeam || g.isMaestro || ['cody', 'tester', 'research', 'doc', 'scraapy', 'vision'].includes(g.agentId));
-  }, [uniqueThreads, agents]);
+    return Array.from(groupsMap.values()).filter((g) => g.isTeam);
+  }, [uniqueThreads]);
 
   const contextAgentId = useMemo(() => {
     if (!activeThread) return null;
@@ -613,29 +576,6 @@ export const ThreadsDrawer: React.FC = () => {
     if (!contextAgentId) return null;
     return agents.find((a) => normalizeMediobotId(a.id) === contextAgentId) ?? null;
   }, [contextAgentId, agents]);
-
-  const demoChats = useMemo(() => {
-    const demoConfigs = [
-      { id: 'thread-alpha-main-01', index: 1, label: 'Build a Website', tag: 'Planning & Delegation' },
-      { id: 'thread-alpha-main-02', index: 2, label: 'Debug an Application', tag: 'Diffs & Tests' },
-      { id: 'thread-demo-03-parallel-collab', index: 3, label: 'Parallel Collaboration', tag: 'Multi-Specialist' },
-      { id: 'thread-demo-04-code-review', index: 4, label: 'Code Review & Audit', tag: 'Review & Approvals' },
-      { id: 'thread-demo-05-research-task', index: 5, label: 'Research & Intelligence', tag: 'Discovery' },
-      { id: 'thread-demo-06-qa-testing', index: 6, label: 'Quality Assurance', tag: 'Failure & Recovery' },
-      { id: 'thread-demo-07-terminal-exec', index: 7, label: 'Terminal Commands', tag: 'CLI Execution' },
-      { id: 'thread-alpha-cody-01', index: 8, label: 'Specialist Direct Chat', tag: 'Cody 1-on-1' },
-      { id: 'thread-demo-09-long-running', index: 9, label: 'Long-Running Recovery', tag: 'Checkpoints' },
-      { id: 'thread-demo-10-complete-project', index: 10, label: 'Complete Project Showcase', tag: 'End-to-End' },
-    ];
-    return demoConfigs.map((cfg) => {
-      const thread = uniqueThreads.find((t) => t.id === cfg.id);
-      return {
-        ...cfg,
-        title: thread?.title || cfg.label,
-        exists: !!thread,
-      };
-    });
-  }, [uniqueThreads]);
 
   const allItems = useMemo(
     () => uniqueThreads.map((t) => ({
@@ -657,13 +597,14 @@ export const ThreadsDrawer: React.FC = () => {
       id: item.id,
       title: item.title,
       specialistId: item.specialistId,
-      isDeleting: deletingThreadIds.has(String(item.id)),
-      deleteFuseMs: 2500,
+      isDeleting: String(item.id) in deletingThreads,
+      deleteFuseMs: DELETE_DURATION_MS,
     }));
-  }, [filteredItems, deletingThreadIds]);
+  }, [filteredItems, deletingThreads]);
 
   const activeHistoryIndex = useMemo(() => {
-    return filteredItems.findIndex((item) => item.id === activeThreadId);
+    if (!activeThreadId) return -1;
+    return filteredItems.findIndex((item) => String(item.id) === String(activeThreadId));
   }, [filteredItems, activeThreadId]);
 
   // Render recursive file tree with VS Code automatic icon resolution
@@ -899,35 +840,7 @@ export const ThreadsDrawer: React.FC = () => {
       {sidebarTab === 'maestro' ? (
         /* TEAM ROSTER: Participating Team Roster for the active conversation */
         <div className="w-[270px] min-w-[270px] flex-1 flex flex-col min-h-0 select-none">
-          {/* Header Bar */}
-          <div className="px-3.5 pt-3.5 pb-2 shrink-0 border-b border-black/5 dark:border-white/5">
-            <div className="flex items-center justify-between">
-              <div>
-                <h3 className={`text-[12px] font-bold tracking-wider uppercase ${isLight ? 'text-neutral-500' : 'text-neutral-400'}`}>
-                  Team Roster
-                </h3>
-                <p className={`text-[11px] truncate mt-0.5 ${isLight ? 'text-neutral-600' : 'text-neutral-300'}`}>
-                  {activeThread?.title ? activeThread.title.replace(/^Maestro\s*·\s*/i, '').slice(0, 28) : 'Mediobot Team'}
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => selectAgent(null)}
-                data-testid="roster-open-main-team"
-                className={`text-[10.5px] font-medium px-2 py-1 rounded-md transition-colors cursor-pointer flex items-center gap-1 ${
-                  selectedMediobotId === null
-                    ? isLight ? 'bg-blue-100 text-blue-800 font-semibold' : 'bg-blue-900/40 text-blue-300 border border-blue-700/50'
-                    : isLight ? 'bg-neutral-100 hover:bg-neutral-200 text-neutral-700' : 'bg-white/5 hover:bg-white/10 text-neutral-300'
-                }`}
-                title="Switch to shared Main Team conversation"
-              >
-                <Users className="w-3 h-3" />
-                <span>Main Team</span>
-              </button>
-            </div>
-          </div>
-
-          <div className="flex-1 overflow-y-auto px-3.5 pt-2 space-y-3.5 scrollbar-thin scrollbar-thumb-neutral-700 pb-4">
+          <div className="flex-1 overflow-y-auto px-3.5 pt-3.5 space-y-3.5 scrollbar-thin scrollbar-thumb-neutral-700 pb-4">
             {/* Section 1: TEAM LEADER (Maestro) */}
             <div>
               <div className="flex items-center justify-between mb-1.5 px-0.5">
@@ -1349,80 +1262,21 @@ export const ThreadsDrawer: React.FC = () => {
               </div>
             )}
 
-            {/* Team Switcher Pill Bar when multiple teams exist */}
-            {teamsList.length > 1 && (
-              <div className="mb-2 flex items-center gap-1.5 overflow-x-auto pb-1 select-none">
-                {teamsList.map((tm) => {
-                  const isCurrent = tm.id === activeTeamId;
-                  return (
-                    <button
-                      key={tm.id}
-                      onClick={() => {
-                        if (tm.id !== activeTeamId) {
-                          setActiveTeamId(tm.id);
-                          const teamMain = threads.find((t) => t.teamId === tm.id && t.threadType === 'team');
-                          if (teamMain) openChatTab(teamMain.id);
-                        }
-                      }}
-                      className={`text-[10px] font-mono px-2 py-0.5 rounded-full border transition-colors cursor-pointer shrink-0 ${
-                        isCurrent
-                          ? isLight
-                            ? 'bg-blue-50 text-blue-700 border-blue-300 font-semibold shadow-2xs'
-                            : 'bg-blue-950/60 text-blue-300 border-blue-700/60 font-semibold'
-                          : isLight
-                          ? 'border-[#e2e4e8] hover:bg-[#eaebee] text-[#64748b]'
-                          : 'border-white/10 hover:bg-[#202025] text-neutral-400'
-                      }`}
-                    >
-                      {tm.name}
-                    </button>
-                  );
-                })}
+            <button
+              onClick={() => {
+                createNewTeam();
+              }}
+              className={`w-full flex items-center justify-between px-3 py-1.5 text-[12.5px] font-medium rounded-lg transition-colors cursor-pointer ${
+                isLight
+                  ? 'text-[#18181b] hover:text-[#09090b] hover:bg-[#eaebee]'
+                  : 'text-neutral-200 hover:text-white hover:bg-[#222227]'
+              }`}
+            >
+              <div className="flex items-center gap-2.5">
+                <SquarePen className={`w-4 h-4 ${isLight ? 'text-[#6b6a75]' : 'text-neutral-300'} stroke-[1.75]`} />
+                <span>New chat</span>
               </div>
-            )}
-
-            {contextAgentId ? (
-              <button
-                onClick={() => createNewChat(contextAgentId, activeTeamId)}
-                className={`w-full flex items-center justify-between px-3 py-1.5 text-[12.5px] font-medium rounded-lg transition-colors cursor-pointer ${
-                  isLight
-                    ? 'text-[#18181b] hover:text-[#09090b] hover:bg-[#eaebee]'
-                    : 'text-neutral-200 hover:text-white hover:bg-[#222227]'
-                }`}
-              >
-                <div className="flex items-center gap-2.5">
-                  <SquarePen className={`w-4 h-4 ${isLight ? 'text-[#6b6a75]' : 'text-neutral-300'} stroke-[1.75]`} />
-                  <span>{`New ${contextAgent?.name ?? 'Specialist'} chat`}</span>
-                </div>
-              </button>
-            ) : (
-              <div className="flex items-center gap-1.5">
-                <button
-                  onClick={() => createNewMainTeamChat()}
-                  className={`flex-1 flex items-center gap-2 px-3 py-1.5 text-[12.5px] font-medium rounded-lg transition-colors cursor-pointer ${
-                    isLight
-                      ? 'text-[#18181b] hover:text-[#09090b] hover:bg-[#eaebee]'
-                      : 'text-neutral-200 hover:text-white hover:bg-[#222227]'
-                  }`}
-                  title="Create new independent Main conversation in this team"
-                >
-                  <SquarePen className={`w-4 h-4 ${isLight ? 'text-[#6b6a75]' : 'text-neutral-300'} stroke-[1.75]`} />
-                  <span>New chat</span>
-                </button>
-                <button
-                  onClick={() => createNewTeam()}
-                  className={`flex items-center gap-1 px-2.5 py-1.5 text-[11px] font-medium rounded-lg border transition-colors cursor-pointer shrink-0 ${
-                    isLight
-                      ? 'border-[#e2e4e8] hover:bg-[#eaebee] text-[#475569]'
-                      : 'border-white/10 hover:bg-[#222227] text-neutral-300'
-                  }`}
-                  title="Create a new distinct Team environment"
-                >
-                  <Users className="w-3.5 h-3.5" />
-                  <span>New team</span>
-                </button>
-              </div>
-            )}
+            </button>
           </div>
 
           {/* Scrollable History List */}
@@ -1435,13 +1289,64 @@ export const ThreadsDrawer: React.FC = () => {
               ) : (
                 <div className="space-y-1">
                   {filteredItems.map((item) => {
-                    const isDeleting = deletingThreadIds.has(item.id);
+                    const deleteStartedAt = deletingThreads[String(item.id)];
+                    const isDeleting = typeof deleteStartedAt === 'number';
                     const isActive = item.id === activeThreadId;
+
+                    if (isDeleting) {
+                      return (
+                        <div key={item.id} className="w-full">
+                          <HoldButton
+                            mode="auto"
+                            autoStart
+                            startedAt={deleteStartedAt}
+                            fullWidth
+                            size="xs"
+                            radius={8}
+                            holdTime={DELETE_DURATION_MS}
+                            releaseTime={240}
+                            fillDirection="right"
+                            wave
+                            waveAmplitude={6}
+                            glow
+                            resetAfter={0}
+                            backgroundColor={isLight ? '#fee2e2' : '#25151a'}
+                            fillColor="#dc2626"
+                            textColor={isLight ? '#991b1b' : '#fecaca'}
+                            fillTextColor="#ffffff"
+                            doneLabel="Deleted"
+                            doneIcon={<Check className="w-3.5 h-3.5 stroke-[2.5]" />}
+                            ariaLabel={`Deleting ${item.title}. Click or press Escape to undo`}
+                            title="Click or press Escape to undo deletion"
+                            data-testid={`hold-delete-thread-${item.id}`}
+                            renderActiveLabel={(remSec) => (
+                              <span className="flex items-center justify-between w-full gap-2 min-w-0">
+                                <span className="flex items-center gap-1.5 min-w-0">
+                                  <Trash2 className="w-3 h-3 shrink-0" />
+                                  <span className="truncate font-medium">Deleting {item.title}</span>
+                                </span>
+                                <span className="flex items-center gap-1 shrink-0 font-mono tabular-nums text-[11px]">
+                                  <span>{remSec}s</span>
+                                  <span aria-hidden="true">·</span>
+                                  <span className="font-sans font-semibold underline decoration-current/40 underline-offset-2">
+                                    Undo
+                                  </span>
+                                </span>
+                              </span>
+                            )}
+                            onHold={() => finishDeleteThread(String(item.id))}
+                            onCancel={() => undoDeleteThread(String(item.id))}
+                          >
+                            Deleting {item.title}
+                          </HoldButton>
+                        </div>
+                      );
+                    }
+
                     return (
                       <div
                         key={item.id}
                         onClick={() => {
-                          if (isDeleting) return;
                           openChatTab(item.id);
                         }}
                         className={`group relative w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-left text-xs transition-colors cursor-pointer ${
@@ -1455,91 +1360,44 @@ export const ThreadsDrawer: React.FC = () => {
                         }`}
                       >
                         <div className="flex items-center gap-2 truncate flex-1 pr-2">
-                          {item.specialistId && item.specialistId !== 'maestro' ? (
-                            <span
-                              className={`shrink-0 text-[10px] font-semibold uppercase px-1.5 py-0.5 rounded tracking-wide ${
-                                item.specialistId === 'cody'
-                                  ? isLight ? 'bg-amber-100 text-amber-800' : 'bg-amber-950/60 text-amber-300 border border-amber-800/40'
-                                  : item.specialistId === 'tester'
-                                  ? isLight ? 'bg-purple-100 text-purple-800' : 'bg-purple-950/60 text-purple-300 border border-purple-800/40'
-                                  : isLight ? 'bg-neutral-200/80 text-neutral-800' : 'bg-neutral-800 text-neutral-300'
-                              }`}
-                            >
-                              {item.specialistId}
-                            </span>
-                          ) : (
-                            <span className={`shrink-0 text-[10px] font-semibold uppercase px-1.5 py-0.5 rounded tracking-wide ${
-                              isLight ? 'bg-blue-50 text-blue-700' : 'bg-blue-950/50 text-blue-300 border border-blue-800/30'
-                            }`}>
-                              Team
-                            </span>
-                          )}
                           <span className="truncate font-medium text-[13px]">{item.title}</span>
                         </div>
 
-                        {isDeleting ? (
-                          <div className="flex items-center gap-1 shrink-0 z-10" onClick={(e) => e.stopPropagation()}>
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                undoDeleteThread(String(item.id));
-                              }}
-                              title="Undo deletion"
-                              className="shrink-0 flex items-center gap-1 px-2.5 py-0.5 rounded-lg bg-red-600 hover:bg-red-700 text-white text-[11px] font-semibold shadow-xs active:scale-95 transition-all cursor-pointer"
-                            >
-                              <RotateCcw className="w-3 h-3 stroke-[2.5]" />
-                              <span>Undo</span>
-                            </button>
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                confirmDeleteThread(String(item.id));
-                              }}
-                              title="Delete immediately"
-                              className="p-1 rounded-md text-red-400 hover:text-white hover:bg-red-600/40 transition-all cursor-pointer"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          </div>
-                        ) : (
-                          <span className="flex items-center opacity-0 group-hover:opacity-100 focus-within:opacity-100 shrink-0">
-                            <button
-                              aria-label={`Rename ${item.title}`}
-                              title="Rename conversation"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                const next = window.prompt('Rename conversation', item.title);
-                                if (next && next.trim() && next.trim() !== item.title) {
-                                  renameThread(String(item.id), next.trim());
-                                }
-                              }}
-                              className={`p-1 transition-colors cursor-pointer ${
-                                isLight
-                                  ? 'text-[#6b6a75] hover:text-[#09090b]'
-                                  : 'text-neutral-400 hover:text-white'
-                              }`}
-                            >
-                              <Pencil className="w-3 h-3" />
-                            </button>
-                            <button
-                              aria-label={`Delete ${item.title}`}
-                              title="Delete conversation"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                startDeletingThread(String(item.id));
-                              }}
-                              className={`p-1 transition-colors cursor-pointer ${
-                                isLight
-                                  ? 'text-[#6b6a75] hover:text-red-600'
-                                  : 'text-neutral-400 hover:text-red-400'
-                              }`}
-                            >
-                              <Trash2 className="w-3 h-3" />
-                            </button>
-                          </span>
-                        )}
+                        <span className="flex items-center opacity-0 group-hover:opacity-100 focus-within:opacity-100 shrink-0">
+                          <button
+                            aria-label={`Rename ${item.title}`}
+                            title="Rename conversation"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              const next = window.prompt('Rename conversation', item.title);
+                              if (next && next.trim() && next.trim() !== item.title) {
+                                renameThread(String(item.id), next.trim());
+                              }
+                            }}
+                            className={`p-1 transition-colors cursor-pointer ${
+                              isLight
+                                ? 'text-[#6b6a75] hover:text-[#09090b]'
+                                : 'text-neutral-400 hover:text-white'
+                            }`}
+                          >
+                            <Pencil className="w-3 h-3" />
+                          </button>
+                          <button
+                            aria-label={`Delete ${item.title}`}
+                            title="Delete conversation"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              startDeletingThread(String(item.id));
+                            }}
+                            className={`p-1 transition-colors cursor-pointer ${
+                              isLight
+                                ? 'text-[#6b6a75] hover:text-red-600'
+                                : 'text-neutral-400 hover:text-red-400'
+                            }`}
+                          >
+                            <Trash2 className="w-3 h-3" />
+                          </button>
+                        </span>
                       </div>
                     );
                   })}
@@ -1548,68 +1406,6 @@ export const ThreadsDrawer: React.FC = () => {
             ) : (
               /* Grouped collapsible sections by agent */
               <div className="space-y-2">
-                {/* 10 DEMONSTRATION CHATS SHOWCASE */}
-                <div className="select-none mb-2 pb-2 border-b border-black/5 dark:border-white/5">
-                  <div
-                    onClick={() => toggleSectionCollapse('__showcase_demos__')}
-                    className={`w-full flex items-center justify-between px-2 py-1.5 rounded-lg cursor-pointer transition-colors ${
-                      isLight ? 'hover:bg-neutral-100 text-[#18181b]' : 'hover:bg-white/5 text-neutral-300'
-                    }`}
-                  >
-                    <div className="flex items-center gap-1.5 truncate">
-                      {collapsedSections['__showcase_demos__'] ? (
-                        <ChevronRight className="w-3.5 h-3.5 text-neutral-400 shrink-0" />
-                      ) : (
-                        <ChevronDown className="w-3.5 h-3.5 text-neutral-400 shrink-0" />
-                      )}
-                      <Sparkles className="w-3.5 h-3.5 text-amber-500 shrink-0" />
-                      <span className="text-[12px] font-semibold tracking-tight truncate">10 Demonstration Chats</span>
-                      <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono ${
-                        isLight ? 'bg-amber-100 text-amber-800 font-semibold' : 'bg-amber-950/60 text-amber-300 border border-amber-800/40'
-                      }`}>
-                        10
-                      </span>
-                    </div>
-                  </div>
-
-                  {!collapsedSections['__showcase_demos__'] && (
-                    <div className="mt-1 space-y-0.5 pl-1.5">
-                      {demoChats.map((demo) => {
-                        const isActive = demo.id === activeThreadId;
-                        return (
-                          <div
-                            key={demo.id}
-                            onClick={() => openChatTab(demo.id)}
-                            className={`group relative w-full flex items-center justify-between px-2 py-1.5 rounded-lg text-left text-xs transition-colors cursor-pointer ${
-                              isActive
-                                ? isLight
-                                  ? 'bg-neutral-200/80 font-medium text-neutral-900'
-                                  : 'bg-[#27272d] font-medium text-white shadow-2xs'
-                                : isLight
-                                ? 'hover:bg-neutral-100 text-neutral-700'
-                                : 'hover:bg-[#1a1a1e] text-neutral-400 hover:text-neutral-200'
-                            }`}
-                          >
-                            <div className="flex items-center gap-2 truncate flex-1 pr-1">
-                              <span className={`shrink-0 w-4.5 h-4.5 rounded text-[10px] font-mono font-bold flex items-center justify-center ${
-                                isActive
-                                  ? isLight ? 'bg-black text-white' : 'bg-white text-black'
-                                  : isLight ? 'bg-neutral-200/60 text-neutral-600' : 'bg-neutral-800 text-neutral-400'
-                              }`}>
-                                {demo.index}
-                              </span>
-                              <div className="flex flex-col min-w-0 truncate">
-                                <span className="truncate font-medium text-[12px]">{demo.title}</span>
-                                <span className="text-[9.5px] text-neutral-400 dark:text-neutral-500 truncate">{demo.tag}</span>
-                              </div>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-
                 {agentGroups.map((group) => {
                   const isCollapsed = Boolean(collapsedSections[group.agentId]);
                   return (
@@ -1674,12 +1470,63 @@ export const ThreadsDrawer: React.FC = () => {
                           ) : (
                             group.threads.map((item) => {
                               const isActive = item.id === activeThreadId;
-                              const isDeleting = deletingThreadIds.has(item.id);
+                              const deleteStartedAt = deletingThreads[String(item.id)];
+                              const isDeleting = typeof deleteStartedAt === 'number';
+
+                              if (isDeleting) {
+                                return (
+                                  <div key={item.id} className="w-full">
+                                    <HoldButton
+                                      mode="auto"
+                                      autoStart
+                                      startedAt={deleteStartedAt}
+                                      fullWidth
+                                      size="xs"
+                                      radius={8}
+                                      holdTime={DELETE_DURATION_MS}
+                                      releaseTime={240}
+                                      fillDirection="right"
+                                      wave
+                                      waveAmplitude={6}
+                                      glow
+                                      resetAfter={0}
+                                      backgroundColor={isLight ? '#fee2e2' : '#25151a'}
+                                      fillColor="#dc2626"
+                                      textColor={isLight ? '#991b1b' : '#fecaca'}
+                                      fillTextColor="#ffffff"
+                                      doneLabel="Deleted"
+                                      doneIcon={<Check className="w-3.5 h-3.5 stroke-[2.5]" />}
+                                      ariaLabel={`Deleting ${item.cleanTitle}. Click or press Escape to undo`}
+                                      title="Click or press Escape to undo deletion"
+                                      data-testid={`hold-delete-thread-${item.id}`}
+                                      renderActiveLabel={(remSec) => (
+                                        <span className="flex items-center justify-between w-full gap-2 min-w-0">
+                                          <span className="flex items-center gap-1.5 min-w-0">
+                                            <Trash2 className="w-3 h-3 shrink-0" />
+                                            <span className="truncate font-medium">Deleting {item.cleanTitle}</span>
+                                          </span>
+                                          <span className="flex items-center gap-1 shrink-0 font-mono tabular-nums text-[11px]">
+                                            <span>{remSec}s</span>
+                                            <span aria-hidden="true">·</span>
+                                            <span className="font-sans font-semibold underline decoration-current/40 underline-offset-2">
+                                              Undo
+                                            </span>
+                                          </span>
+                                        </span>
+                                      )}
+                                      onHold={() => finishDeleteThread(String(item.id))}
+                                      onCancel={() => undoDeleteThread(String(item.id))}
+                                    >
+                                      Deleting {item.cleanTitle}
+                                    </HoldButton>
+                                  </div>
+                                );
+                              }
+
                               return (
                                 <div
                                   key={item.id}
                                   onClick={() => {
-                                    if (isDeleting) return;
                                     openChatTab(item.id);
                                   }}
                                   className={`group relative w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-left text-xs transition-colors cursor-pointer ${
@@ -1694,69 +1541,41 @@ export const ThreadsDrawer: React.FC = () => {
                                 >
                                   <span className="truncate flex-1 pr-2 text-[12.5px]">{item.cleanTitle}</span>
 
-                                  {isDeleting ? (
-                                    <div className="flex items-center gap-1 shrink-0 z-10" onClick={(e) => e.stopPropagation()}>
-                                      <button
-                                        type="button"
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          undoDeleteThread(String(item.id));
-                                        }}
-                                        title="Undo deletion"
-                                        className="shrink-0 flex items-center gap-1 px-2.5 py-0.5 rounded-lg bg-red-600 hover:bg-red-700 text-white text-[11px] font-semibold shadow-xs active:scale-95 transition-all cursor-pointer"
-                                      >
-                                        <RotateCcw className="w-3 h-3 stroke-[2.5]" />
-                                        <span>Undo</span>
-                                      </button>
-                                      <button
-                                        type="button"
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          confirmDeleteThread(String(item.id));
-                                        }}
-                                        title="Delete immediately"
-                                        className="p-1 rounded-md text-red-400 hover:text-white hover:bg-red-600/40 transition-all cursor-pointer"
-                                      >
-                                        <Trash2 className="w-3.5 h-3.5" />
-                                      </button>
-                                    </div>
-                                  ) : (
-                                    <span className="flex items-center opacity-0 group-hover:opacity-100 focus-within:opacity-100 shrink-0">
-                                      <button
-                                        aria-label={`Rename ${item.title}`}
-                                        title="Rename conversation"
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          const next = window.prompt('Rename conversation', item.title);
-                                          if (next && next.trim() && next.trim() !== item.title) {
-                                            renameThread(String(item.id), next.trim());
-                                          }
-                                        }}
-                                        className={`p-1 transition-colors cursor-pointer ${
-                                          isLight
-                                            ? 'text-[#6b6a75] hover:text-[#09090b]'
-                                            : 'text-neutral-400 hover:text-white'
-                                        }`}
-                                      >
-                                        <Pencil className="w-3 h-3" />
-                                      </button>
-                                      <button
-                                        aria-label={`Delete ${item.title}`}
-                                        title="Delete conversation"
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          startDeletingThread(String(item.id));
-                                        }}
-                                        className={`p-1 transition-colors cursor-pointer ${
-                                          isLight
-                                            ? 'text-[#6b6a75] hover:text-red-600'
-                                            : 'text-neutral-400 hover:text-red-400'
-                                        }`}
-                                      >
-                                        <Trash2 className="w-3 h-3" />
-                                      </button>
-                                    </span>
-                                  )}
+                                  <span className="flex items-center opacity-0 group-hover:opacity-100 focus-within:opacity-100 shrink-0">
+                                    <button
+                                      aria-label={`Rename ${item.title}`}
+                                      title="Rename conversation"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        const next = window.prompt('Rename conversation', item.title);
+                                        if (next && next.trim() && next.trim() !== item.title) {
+                                          renameThread(String(item.id), next.trim());
+                                        }
+                                      }}
+                                      className={`p-1 transition-colors cursor-pointer ${
+                                        isLight
+                                          ? 'text-[#6b6a75] hover:text-[#09090b]'
+                                          : 'text-neutral-400 hover:text-white'
+                                      }`}
+                                    >
+                                      <Pencil className="w-3 h-3" />
+                                    </button>
+                                    <button
+                                      aria-label={`Delete ${item.title}`}
+                                      title="Delete conversation"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        startDeletingThread(String(item.id));
+                                      }}
+                                      className={`p-1 transition-colors cursor-pointer ${
+                                        isLight
+                                          ? 'text-[#6b6a75] hover:text-red-600'
+                                          : 'text-neutral-400 hover:text-red-400'
+                                      }`}
+                                    >
+                                      <Trash2 className="w-3 h-3" />
+                                    </button>
+                                  </span>
                                 </div>
                               );
                             })

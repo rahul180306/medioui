@@ -142,11 +142,13 @@ export const CanonicalTrajectoryView: React.FC<{
               key={block.id}
               className={`rounded-md p-2 border ${
                 isLight
-                  ? 'bg-blue-50/60 border-blue-200 text-blue-950'
-                  : 'bg-blue-950/30 border-blue-700/40 text-blue-100'
+                  ? 'bg-neutral-50 border-neutral-200 text-neutral-800'
+                  : 'bg-white/[0.02] border-white/[0.07] text-neutral-300'
               }`}
             >
-              <div className="flex items-center justify-between gap-2 mb-1 pb-1 border-b border-current/10 font-sans text-[10px] font-semibold tracking-wide uppercase">
+              <div className={`flex items-center justify-between gap-2 mb-1 pb-1 border-b font-sans text-[10.5px] font-medium ${
+                isLight ? 'border-neutral-200 text-neutral-500' : 'border-white/[0.06] text-neutral-400'
+              }`}>
                 <span className="flex items-center gap-1.5">
                   <Terminal className="w-3 h-3 opacity-70" />
                   <span>ACTION: {block.toolName || 'tool'}</span>
@@ -154,7 +156,7 @@ export const CanonicalTrajectoryView: React.FC<{
                 <button
                   type="button"
                   onClick={() => handleCopy(block.content, block.id)}
-                  className="opacity-60 hover:opacity-100 transition-opacity p-0.5"
+                  className="opacity-60 hover:opacity-100 transition-opacity p-0.5 cursor-pointer"
                   title="Copy Action"
                 >
                   {copiedId === block.id ? (
@@ -167,8 +169,8 @@ export const CanonicalTrajectoryView: React.FC<{
               <div className="whitespace-pre-wrap font-mono text-[11px] leading-relaxed opacity-90 overflow-x-auto">
                 {block.targetOrCommand ? (
                   <>
-                    <span className="text-amber-500 font-semibold">{block.toolName}</span>
-                    <span className="opacity-80">({block.targetOrCommand})</span>
+                    <span className="font-semibold">{block.toolName}</span>
+                    <span className="opacity-75">({block.targetOrCommand})</span>
                   </>
                 ) : (
                   block.content
@@ -187,27 +189,31 @@ export const CanonicalTrajectoryView: React.FC<{
             className={`rounded-md p-2 border ${
               isError
                 ? isLight
-                  ? 'bg-rose-50/60 border-rose-200 text-rose-950'
-                  : 'bg-rose-950/30 border-rose-800/40 text-rose-100'
+                  ? 'bg-rose-50/60 border-rose-200 text-rose-900'
+                  : 'bg-rose-950/25 border-rose-800/40 text-rose-200'
                 : isLight
-                  ? 'bg-teal-50/80 border-teal-200 text-teal-950'
-                  : 'bg-[#0c1f24] border-[#134e4a]/70 text-teal-200'
+                  ? 'bg-white border-neutral-200/80 text-neutral-800'
+                  : 'bg-white/[0.02] border-white/[0.06] text-neutral-300'
             }`}
           >
-            <div className="flex items-center justify-between gap-2 mb-1 pb-1 border-b border-current/10 font-sans text-[10px] font-semibold tracking-wide uppercase">
+            <div className={`flex items-center justify-between gap-2 mb-1 pb-1 border-b font-sans text-[10.5px] font-medium ${
+              isError
+                ? isLight ? 'border-rose-200' : 'border-rose-800/30'
+                : isLight ? 'border-neutral-200/70 text-neutral-500' : 'border-white/[0.06] text-neutral-400'
+            }`}>
               <span className="flex items-center gap-1.5">
                 {isError ? (
                   <>
                     <AlertTriangle className="w-3 h-3 text-rose-500" />
-                    <span className="text-rose-600 dark:text-rose-400 font-semibold tracking-wider">
-                      ERROR {block.exitCode !== undefined ? `(exit ${block.exitCode})` : ''}
+                    <span className={isLight ? 'text-rose-700' : 'text-rose-400'}>
+                      Error {block.exitCode !== undefined ? `(exit ${block.exitCode})` : ''}
                     </span>
                   </>
                 ) : (
                   <>
-                    <Eye className="w-3 h-3 text-teal-500 dark:text-teal-400" />
-                    <span className="text-teal-700 dark:text-teal-400 font-semibold tracking-wider">
-                      OUTPUT {block.exitCode === 0 ? '(exit 0)' : block.exitCode !== undefined ? `(exit ${block.exitCode})` : ''}
+                    <Eye className="w-3 h-3 opacity-60" />
+                    <span>
+                      Output {block.exitCode === 0 ? '(exit 0)' : block.exitCode !== undefined ? `(exit ${block.exitCode})` : ''}
                     </span>
                   </>
                 )}
@@ -215,13 +221,13 @@ export const CanonicalTrajectoryView: React.FC<{
               <button
                 type="button"
                 onClick={() => handleCopy(block.content, block.id)}
-                className="opacity-70 hover:opacity-100 transition-opacity p-0.5 cursor-pointer"
-                title="Copy Observation"
+                className="opacity-65 hover:opacity-100 transition-opacity p-0.5 cursor-pointer"
+                title="Copy Output"
               >
                 {copiedId === block.id ? (
                   <Check className="w-3 h-3 text-emerald-500" />
                 ) : (
-                  <Copy className="w-3 h-3 text-teal-600 dark:text-teal-400" />
+                  <Copy className="w-3 h-3" />
                 )}
               </button>
             </div>

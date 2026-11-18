@@ -2,11 +2,19 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { type TimelineNavigatorAnchor } from './timeline';
 import { useApp } from '../../state/AppContext';
 
+export interface TimelineAnchorMeta {
+  durationLabel?: string;
+  filesCount?: number;
+  stepsCount?: number;
+  status?: string;
+}
+
 export const TimelineNavigator: React.FC<{
   anchors: ReadonlyArray<TimelineNavigatorAnchor>;
   scrollRoot: HTMLElement | null;
   targets: React.MutableRefObject<Map<string, HTMLElement>>;
-}> = ({ anchors, scrollRoot, targets }) => {
+  turnMetaByTargetId?: ReadonlyMap<string, TimelineAnchorMeta>;
+}> = ({ anchors, scrollRoot, targets, turnMetaByTargetId }) => {
   const { theme } = useApp();
   const isLight = theme === 'light';
 
@@ -63,6 +71,7 @@ export const TimelineNavigator: React.FC<{
   if (userAnchors.length === 0) return null;
 
   const hoverAnchor = hoverIndex !== null ? userAnchors[hoverIndex] : null;
+  const hoverMeta = hoverAnchor ? turnMetaByTargetId?.get(hoverAnchor.targetId) : undefined;
 
   return (
     <nav
@@ -142,16 +151,32 @@ export const TimelineNavigator: React.FC<{
         <div
           role="tooltip"
           data-testid="timeline-preview"
-          className={`pointer-events-none absolute left-10 md:left-12 top-1/2 -translate-y-1/2 w-80 max-w-xs rounded-2xl p-3.5 shadow-2xl transition-all duration-150 z-40 ${
+          className={`pointer-events-none absolute left-10 md:left-12 top-1/2 -translate-y-1/2 w-80 max-w-xs rounded-xl p-3 shadow-2xl transition-all duration-150 z-40 ${
             isLight
               ? 'bg-white/95 border border-[#e2e4e8] text-[#09090b] backdrop-blur-xl'
               : 'bg-[#1c1c1e]/95 border border-white/10 text-neutral-100 backdrop-blur-xl'
           }`}
         >
           <div className={`text-xs font-medium leading-relaxed line-clamp-3 ${isLight ? 'text-neutral-800' : 'text-neutral-200'}`}>
-            <span className="font-semibold text-sky-400 mr-1.5">{hoverIndex + 1}.</span>
+            <span className="font-semibold text-sky-400 mr-1.5 tabular-nums">{hoverIndex + 1}.</span>
             {hoverAnchor.preview || 'User prompt input'}
           </div>
+          {hoverMeta && (hoverMeta.durationLabel || (hoverMeta.stepsCount ?? 0) > 0 || (hoverMeta.filesCount ?? 0) > 0) && (
+            <div
+              className={`mt-2 pt-1.5 border-t flex items-center gap-2.5 text-[10.5px] font-sans tabular-nums ${
+                isLight ? 'border-black/[0.06] text-neutral-500' : 'border-white/[0.07] text-neutral-400'
+              }`}
+            >
+              {hoverMeta.status && (
+                <span className="capitalize">{hoverMeta.status.replace(/_/g, ' ')}</span>
+              )}
+              {hoverMeta.durationLabel && <span>· {hoverMeta.durationLabel}</span>}
+              {(hoverMeta.stepsCount ?? 0) > 0 && <span>· {hoverMeta.stepsCount} steps</span>}
+              {(hoverMeta.filesCount ?? 0) > 0 && (
+                <span>· {hoverMeta.filesCount} {hoverMeta.filesCount === 1 ? 'file' : 'files'}</span>
+              )}
+            </div>
+          )}
         </div>
       )}
     </nav>

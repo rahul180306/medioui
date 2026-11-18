@@ -38,15 +38,15 @@ before(async () => {
 
   const started = Date.now();
   while (!baseUrl && Date.now() - started < 10_000) {
-    const match = serverOutput.match(/http:\/\/127\.0\.0\.1:(\d+)/);
+    const match = serverOutput.match(/http:\/\/(?:0\.0\.0\.0|127\.0\.0\.1):(\d+)/);
     if (match) {
-      baseUrl = match[0];
+      baseUrl = `http://127.0.0.1:${match[1]}`;
       break;
     }
     if (child.exitCode !== null) throw new Error(`Offline demo server exited before startup: ${serverOutput}`);
     await new Promise((resolve) => setTimeout(resolve, 20));
   }
-  if (!baseUrl) throw new Error(`Offline demo server did not start on loopback: ${serverOutput}`);
+  if (!baseUrl) throw new Error(`Offline demo server did not start: ${serverOutput}`);
 });
 
 after(async () => { await stopChild(); });
@@ -61,14 +61,14 @@ test('offline demo API fails closed without execution, provider, credential, or 
     'standalone UI server must not construct provider clients or make model requests');
   assert.doesNotMatch(serverSource, /GEMINI_API_KEY|EXPLABS_API_KEY|customApiKey|customExplabsApiKey/,
     'standalone UI server must not read, save, or expose provider credentials');
-  assert.match(serverSource, /app\.listen\(port,\s*'127\.0\.0\.1'/,
-    'application server must bind to loopback');
-  assert.doesNotMatch(serverSource, /0\.0\.0\.0|process\.env\.HOST/,
+  assert.match(serverSource, /app\.listen\(port,\s*'0\.0\.0\.0'/,
+    'application server must bind to 0.0.0.0 for Cloud Run health checks');
+  assert.doesNotMatch(serverSource, /process\.env\.HOST/,
     'server must not accept or use an external bind override');
   assert.ok(serverSource.indexOf("app.use('/api'") < serverSource.indexOf('app.use(vite.middlewares)'),
     'API deny-by-default middleware must run before Vite SPA fallback');
-  assert.match(packageJson.scripts.preview ?? '', /--host\s+127\.0\.0\.1/,
-    'Vite preview command must bind to loopback');
+  assert.match(packageJson.scripts.preview ?? '', /--host\s+0\.0\.0\.0/,
+    'Vite preview command must bind to 0.0.0.0');
 
   const secretMarker = 'offline-test-secret-must-not-be-accepted';
   const disabledCalls: Array<{ method: string; route: string; body?: unknown }> = [

@@ -34,6 +34,7 @@ export interface AnimatedListProps {
   onItemSelect?: (item: AnimatedListItem, index: number) => void;
   renderItem?: (item: AnimatedListItem, index: number, isSelected: boolean) => ReactNode;
   initialSelectedIndex?: number;
+  revertOnLeave?: boolean;
   selectOnHover?: boolean;
   enableArrowNavigation?: boolean;
   loop?: boolean;
@@ -145,6 +146,7 @@ export default function AnimatedList({
   onItemSelect,
   renderItem,
   initialSelectedIndex = -1,
+  revertOnLeave = true,
   selectOnHover = true,
   enableArrowNavigation = true,
   loop = false,
@@ -177,7 +179,7 @@ export default function AnimatedList({
   const [selected, setSelected] = useState(initialSelectedIndex);
 
   useEffect(() => {
-    if (initialSelectedIndex !== undefined && initialSelectedIndex !== selected) {
+    if (initialSelectedIndex !== undefined) {
       setSelected(initialSelectedIndex);
     }
   }, [initialSelectedIndex]);
@@ -187,6 +189,8 @@ export default function AnimatedList({
     items,
     onItemSelect,
     selected,
+    initialSelectedIndex,
+    revertOnLeave,
     selectOnHover,
     enableArrowNavigation,
     loop,
@@ -454,12 +458,21 @@ export default function AnimatedList({
     };
     const onLeave = () => {
       engaged = false;
+      const s = settingsRef.current;
+      if (s.revertOnLeave !== false) {
+        const activeIdx = s.initialSelectedIndex ?? -1;
+        setSelected(activeIdx);
+      }
     };
 
     viewport.addEventListener('scroll', onScroll, { passive: true });
     window.addEventListener('keydown', onKey);
+    window.addEventListener('blur', onLeave);
     root.addEventListener('pointerenter', onEnter);
     root.addEventListener('pointerleave', onLeave);
+    root.addEventListener('mouseleave', onLeave);
+    track.addEventListener('pointerleave', onLeave);
+    track.addEventListener('mouseleave', onLeave);
     root.addEventListener('pointermove', onPointerMove);
 
     updateFades();
@@ -474,8 +487,12 @@ export default function AnimatedList({
       resizeObserver.disconnect();
       viewport.removeEventListener('scroll', onScroll);
       window.removeEventListener('keydown', onKey);
+      window.removeEventListener('blur', onLeave);
       root.removeEventListener('pointerenter', onEnter);
       root.removeEventListener('pointerleave', onLeave);
+      root.removeEventListener('mouseleave', onLeave);
+      track.removeEventListener('pointerleave', onLeave);
+      track.removeEventListener('mouseleave', onLeave);
       root.removeEventListener('pointermove', onPointerMove);
       engineRef.current = null;
     };
@@ -520,9 +537,18 @@ export default function AnimatedList({
     onItemSelect?.(item, index);
   };
 
+  const handlePointerLeave = () => {
+    if (revertOnLeave) {
+      const activeIdx = settingsRef.current.initialSelectedIndex ?? -1;
+      setSelected(activeIdx);
+    }
+  };
+
   return (
     <div
       ref={rootRef}
+      onPointerLeave={handlePointerLeave}
+      onMouseLeave={handlePointerLeave}
       className={`animated-list${frame ? ' animated-list--framed' : ''} ${className}`.trim()}
       data-animated={animation !== 'none' ? '' : undefined}
       style={{
@@ -549,7 +575,12 @@ export default function AnimatedList({
           WebkitMaskImage: showGradients ? FADE_MASK : undefined
         }}
       >
-        <div ref={trackRef} className="animated-list__track">
+        <div
+          ref={trackRef}
+          onPointerLeave={handlePointerLeave}
+          onMouseLeave={handlePointerLeave}
+          className="animated-list__track"
+        >
           {items.map((item, index) => {
             const entry = item !== null && typeof item === 'object' ? item : { title: String(item) };
             const isSelected = index === selected;

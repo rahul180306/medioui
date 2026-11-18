@@ -49,19 +49,30 @@ export function useToolDuration(
 
     if (!tool.startedAt) return;
 
+    const hasRaf = typeof requestAnimationFrame === 'function' && typeof cancelAnimationFrame === 'function';
     let mounted = true;
+    let timerId: ReturnType<typeof setTimeout> | null = null;
     const tick = () => {
       if (!mounted) return;
       const current = Math.max(0, Date.now() - tool.startedAt!);
       lastElapsedRef.current = current;
       setElapsed(current);
-      rafRef.current = requestAnimationFrame(tick);
+      if (hasRaf) {
+        rafRef.current = requestAnimationFrame(tick);
+      } else {
+        timerId = setTimeout(tick, 100);
+      }
     };
-    rafRef.current = requestAnimationFrame(tick);
+    if (hasRaf) {
+      rafRef.current = requestAnimationFrame(tick);
+    } else {
+      timerId = setTimeout(tick, 100);
+    }
 
     return () => {
       mounted = false;
-      cancelAnimationFrame(rafRef.current);
+      if (hasRaf) cancelAnimationFrame(rafRef.current);
+      if (timerId !== null) clearTimeout(timerId);
     };
   }, [isRunning, tool.startedAt, tool.durationMs]);
 

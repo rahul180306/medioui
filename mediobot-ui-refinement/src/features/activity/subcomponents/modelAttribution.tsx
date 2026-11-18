@@ -133,22 +133,15 @@ export const ModelAttributionBadge: React.FC<ModelBadgeProps> = ({ modelId, isLi
   // When modelId is absent, do NOT duplicate specialistName
   if (!modelDisplay) return null;
 
-  const colorClasses = getModelBadgeColors(modelDisplay, isLight);
-
   return (
     <span
       data-testid="model-attribution-badge"
-      className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9.5px] font-mono font-medium shrink-0 transition-opacity border ${colorClasses} ${
-        isRunning ? 'opacity-100' : 'opacity-75'
-      }`}
+      className={`inline-flex items-center gap-1 text-[11px] font-sans shrink-0 transition-opacity ${
+        isLight ? 'text-neutral-400' : 'text-neutral-500'
+      } ${isRunning ? 'opacity-90' : 'opacity-70'}`}
     >
-      {isRunning && (
-        <span className="relative flex h-1.5 w-1.5 shrink-0">
-          <span className="motion-safe:animate-ping absolute inline-flex h-full w-full rounded-full bg-current opacity-75" />
-          <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-current" />
-        </span>
-      )}
-      {modelDisplay}
+      <span aria-hidden="true">·</span>
+      <span>{modelDisplay}</span>
     </span>
   );
 };

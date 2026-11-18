@@ -10,9 +10,11 @@ import {
   ChevronDown,
   ChevronRight,
   Loader2,
-  CheckCircle2,
-  AlertCircle,
   FileText,
+  Copy,
+  Check,
+  ExternalLink,
+  WrapText,
 } from 'lucide-react';
 import { useApp } from '../../../state/AppContext';
 import { runtimeInstance } from '../../../runtime/client';
@@ -22,6 +24,7 @@ import { extractAllowlistToolDetails, redactSensitiveData } from '../allowlistRe
 import { useToolDuration } from './useToolTimer';
 import type { ModelExecutionTelemetry } from './modelAttribution';
 import { CanonicalTrajectoryView, parseCanonicalTrajectory } from './trajectoryParser';
+import CallChip, { type CallChipIconKind } from '../../../components/CallChip';
 
 // ---------------------------------------------------------------------------
 // Tool Parsing and Actions
@@ -31,10 +34,16 @@ export interface ParsedToolAction {
   id: string;
   icon: 'read' | 'search' | 'list' | 'terminal' | 'edit' | 'web' | 'generic';
   label: string;
+  verb?: string;
+  subject?: string;
   target?: string;
   tool: ToolExecutionData;
   specialistName?: string;
   modelId?: string;
+}
+
+function stripDemoTag(raw: string): string {
+  return raw.replace(/\s*\[Controlled demonstration\]\s*/gi, ' ').trim();
 }
 
 export function parseToolAction(
@@ -59,11 +68,14 @@ export function parseToolAction(
     } catch {
       // Keep plain text path
     }
-    const fileName = path.split(/[\\/]/).pop() || path || 'file';
+    const fileName = stripDemoTag(path.split(/[\\/]/).pop() || path || 'file');
+    const verb = tool.status === 'running' ? 'Reading' : 'Read';
     return {
       id,
       icon: 'read',
-      label: tool.status === 'running' ? `Reading ${fileName}` : `Read ${fileName}`,
+      label: `${verb} ${fileName}`,
+      verb,
+      subject: fileName,
       target: path,
       tool,
       specialistName,
@@ -83,11 +95,14 @@ export function parseToolAction(
     } catch {
       // Keep plain text dir
     }
-    const dirName = dir ? (dir.split(/[\\/]/).filter(Boolean).pop() || dir) : 'workspace';
+    const dirName = stripDemoTag(dir ? (dir.split(/[\\/]/).filter(Boolean).pop() || dir) : 'workspace');
+    const verb = tool.status === 'running' ? 'Listing' : 'Listed files in';
     return {
       id,
       icon: 'list',
-      label: tool.status === 'running' ? `Listing ${dirName}` : `Listed files in ${dirName}`,
+      label: `${verb} ${dirName}`,
+      verb,
+      subject: dirName,
       target: dir,
       tool,
       specialistName,
@@ -96,21 +111,39 @@ export function parseToolAction(
   }
 
   // 3. Search / Grep
-  if (name.includes('search') || cmd.startsWith('filesystem.search') || cmd.startsWith('project.search') || cmd.startsWith('search')) {
-    const query = cmd.replace(/^(filesystem|project)\.search\s*/, '').trim();
+  if (
+    name.includes('search') ||
+    cmd.startsWith('filesystem.search') ||
+    cmd.startsWith('project.search') ||
+    cmd.startsWith('search') ||
+    name === 'doc.analyze'
+  ) {
+    const rawQuery = cmd
+      .replace(/^(filesystem|project|web|doc)\.(search|analyze)\s*/, '')
+      .replace(/^search\s*/, '')
+      .trim();
+    const cleanQuery = stripDemoTag(rawQuery).replace(/^["']|["']$/g, '');
+    const verb = tool.status === 'running' ? 'Searching for' : 'Searched for';
     return {
       id,
       icon: 'search',
-      label: tool.status === 'running' ? `Searching for ${query}` : `Searched for ${query}`,
-      target: query,
+      label: cleanQuery ? `${verb} ${cleanQuery}` : (tool.status === 'running' ? 'Searching codebase' : 'Searched codebase'),
+      verb,
+      subject: cleanQuery || 'codebase',
+      target: cleanQuery,
       tool,
       specialistName,
       modelId,
     };
   }
 
-  // 4. Terminal Command
-  if (name === 'terminal.execute' || cmd.startsWith('terminal.execute') || name.startsWith('terminal')) {
+  // 4. Terminal Command / Benchmark
+  if (
+    name === 'terminal.execute' ||
+    cmd.startsWith('terminal.execute') ||
+    name.startsWith('terminal') ||
+    name === 'benchmark.run'
+  ) {
     const execCmd = cmd.replace(/^terminal\.execute\s*/, '').trim();
     let displayCmd = execCmd.replace(/^["']|["']$/g, '');
     try {
@@ -121,11 +154,14 @@ export function parseToolAction(
     } catch {
       // Keep plain command
     }
-    const safeCmd = redactSensitiveData(displayCmd).text;
+    const safeCmd = stripDemoTag(redactSensitiveData(displayCmd).text);
+    const verb = tool.status === 'running' ? 'Running' : 'Ran';
     return {
       id,
       icon: 'terminal',
-      label: tool.status === 'running' ? `Running ${safeCmd}` : `Ran ${safeCmd}`,
+      label: `${verb} ${safeCmd}`,
+      verb,
+      subject: safeCmd,
       target: safeCmd,
       tool,
       specialistName,
@@ -136,12 +172,15 @@ export function parseToolAction(
   // 5. File Edit / Write
   if (name.includes('write') || name.includes('edit')) {
     const rawPath = cmd.replace(/^filesystem\.(write|edit)\s*/, '').trim();
-    const safePath = redactSensitiveData(rawPath).text;
+    const safePath = stripDemoTag(redactSensitiveData(rawPath).text);
     const fileName = safePath.split(/[\\/]/).pop() || safePath || 'file';
+    const verb = tool.status === 'running' ? 'Writing' : 'Edited';
     return {
       id,
       icon: 'edit',
-      label: tool.status === 'running' ? `Writing ${fileName}` : `Edited ${fileName}`,
+      label: `${verb} ${fileName}`,
+      verb,
+      subject: fileName,
       target: safePath,
       tool,
       specialistName,
@@ -151,11 +190,15 @@ export function parseToolAction(
 
   // 6. Browser / Web
   if (name.includes('browser') || name.includes('vision') || name.includes('web')) {
-    const safeTarget = redactSensitiveData(cmd).text;
+    const rawTarget = cmd.replace(/^web\.search\s*/, '').trim();
+    const safeTarget = stripDemoTag(redactSensitiveData(rawTarget).text).replace(/^["']|["']$/g, '');
+    const verb = tool.status === 'running' ? 'Browsing' : 'Browsed';
     return {
       id,
       icon: 'web',
       label: tool.status === 'running' ? `Browsing web` : `Browsed web`,
+      verb,
+      subject: safeTarget || 'web',
       target: safeTarget,
       tool,
       specialistName,
@@ -164,11 +207,13 @@ export function parseToolAction(
   }
 
   // 7. Generic fallback
-  const safeFallback = redactSensitiveData(cmd).text;
+  const safeFallback = stripDemoTag(redactSensitiveData(cmd).text);
   return {
     id,
     icon: 'generic',
     label: safeFallback || name || 'Tool action',
+    verb: undefined,
+    subject: safeFallback || name || 'Tool action',
     target: safeFallback,
     tool,
     specialistName,
@@ -178,10 +223,16 @@ export function parseToolAction(
 
 function renderActionIcon(icon: ParsedToolAction['icon'], isLight: boolean, isRunning: boolean) {
   if (isRunning) {
-    return <Loader2 className="w-3.5 h-3.5 text-amber-500 animate-spin shrink-0" />;
+    return (
+      <Loader2
+        className={`w-3.5 h-3.5 animate-spin shrink-0 ${
+          isLight ? 'text-neutral-500' : 'text-neutral-400'
+        }`}
+      />
+    );
   }
 
-  const baseColor = isLight ? 'text-neutral-500' : 'text-neutral-400';
+  const baseColor = isLight ? 'text-neutral-400' : 'text-neutral-500';
 
   switch (icon) {
     case 'read':
@@ -207,52 +258,140 @@ export interface CodexToolRowProps {
   telemetry?: ModelExecutionTelemetry;
   tokensPerSec?: number;
   ttftMs?: number;
+  onRetry?: () => void;
+}
+
+export function mapActionToCallChip(
+  action: ParsedToolAction,
+  commandDescription?: string
+): { icon: CallChipIconKind; name: string; argument: string; expectedMs: number } {
+  const iconMap: Record<ParsedToolAction['icon'], CallChipIconKind> = {
+    terminal: 'terminal',
+    edit: 'edit',
+    search: 'search',
+    read: 'file',
+    list: 'file',
+    web: 'search',
+    generic: 'terminal',
+  };
+
+  const nameMap: Record<ParsedToolAction['icon'], string> = {
+    terminal: action.tool.toolName === 'benchmark.run' ? 'bench' : 'bash',
+    edit: 'edit',
+    search: 'search',
+    read: 'read',
+    list: 'list',
+    web: 'web',
+    generic: action.tool.toolName || 'tool',
+  };
+
+  const expectedMsMap: Record<ParsedToolAction['icon'], number> = {
+    terminal: 2800,
+    edit: 1400,
+    search: 1800,
+    read: 900,
+    list: 800,
+    web: 2600,
+    generic: 2000,
+  };
+
+  const arg =
+    (action.icon === 'terminal' ? commandDescription : undefined) ||
+    action.target ||
+    action.subject ||
+    action.label;
+
+  return {
+    icon: iconMap[action.icon],
+    name: nameMap[action.icon],
+    argument: stripDemoTag(arg),
+    expectedMs: expectedMsMap[action.icon],
+  };
 }
 
 /**
- * Codex-style Single Tool Action Row
- * Clean, typography-first, without box borders.
- * Clicking toggles the view of what was read or executed inline!
- *
- * M2 / M3 Enhancement: Live duration timer, telemetry pill, canonical trajectory parser,
- * allowlist redaction integration, and accessible keyboard disclosure.
+ * Unboxed Codex-style Single Tool Action Row
+ * Quiet two-tone typography ("Read" muted + "package.json" crisp), zero border boxes or badge clutter.
+ * Clicking expands the inline execution detail or file snapshot smoothly.
  */
 export const CodexToolRow: React.FC<CodexToolRowProps> = ({
   action,
   isLight,
-  telemetry,
-  tokensPerSec,
-  ttftMs,
+  onRetry,
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [asyncContent, setAsyncContent] = useState<string | null>(null);
   const [isLoadingAsync, setIsLoadingAsync] = useState(false);
+  const [copiedOutput, setCopiedOutput] = useState(false);
+  const [wrapLines, setWrapLines] = useState(true);
 
   let activeProjectId: string | undefined;
+  let openFileTab: ((path: string, name?: string) => void) | undefined;
+  let sendPrompt: ((text: string) => Promise<void>) | undefined;
+  let activeTurnId: string | null | undefined;
   try {
     const app = useApp();
     activeProjectId = app.activeProjectId;
+    openFileTab = app.openFileTab;
+    sendPrompt = app.sendPrompt;
+    activeTurnId = app.activeTurnId;
   } catch {
     activeProjectId = undefined;
+    openFileTab = undefined;
+    sendPrompt = undefined;
+    activeTurnId = undefined;
   }
 
   const tool = action.tool;
   const isRunning = tool.status === 'running';
   const isFailed = tool.status === 'failed';
-  const isSuccess = tool.status === 'success';
   const outcomeBadge = getOutcomeBadge(tool);
   const emptyOutputMessage = toolOutputFallback(tool.toolName, tool.status);
 
-  // M1 Allowlist extraction for defensive and sanitized display
+  // Allowlist extraction for defensive and sanitized display
   const safeDetails = extractAllowlistToolDetails(tool, action.specialistName, action.specialistName);
+  const chipMeta = mapActionToCallChip(action, safeDetails.commandDescription);
 
-  // M3: Live duration timer with freeze guarantee
+  const retryHandler =
+    onRetry ??
+    (isFailed && sendPrompt && !activeTurnId
+      ? () => {
+          void sendPrompt!(`Retry failed step: ${chipMeta.name} ${chipMeta.argument}`);
+        }
+      : undefined);
+
+  // Live duration timer with freeze guarantee
   const { durationText, isLive } = useToolDuration(tool, isRunning);
 
   // Content to display when clicked open (strictly sanitized)
   const rawOutput = tool.outputLog || asyncContent || tool.error || emptyOutputMessage;
   const outputContent = rawOutput ? redactSensitiveData(rawOutput).text : '';
-  const hasDetail = true;
+
+  const isFileAction = (action.icon === 'read' || action.icon === 'edit') && Boolean(action.target);
+  const cleanTargetPath = action.target ? action.target.replace(/^\.\//, '').replace(/^\/+/, '').trim() : '';
+
+  const handleOpenInEditor = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (openFileTab && cleanTargetPath) {
+      openFileTab(cleanTargetPath);
+    }
+  };
+
+  const handleCopyDetails = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    const copyPayload =
+      action.icon === 'terminal' && safeDetails.commandDescription
+        ? `$ ${safeDetails.commandDescription}\n${outputContent}`
+        : outputContent;
+    if (!copyPayload) return;
+    try {
+      void navigator.clipboard.writeText(copyPayload);
+      setCopiedOutput(true);
+      setTimeout(() => setCopiedOutput(false), 1600);
+    } catch {
+      // Clipboard unavailable in test/sandbox contexts
+    }
+  };
 
   const handleToggle = async () => {
     const nextOpen = !isOpen;
@@ -306,139 +445,270 @@ export const CodexToolRow: React.FC<CodexToolRowProps> = ({
             void handleToggle();
           }
         }}
-        className={`group flex items-center justify-between gap-2 py-1 px-1 rounded-md text-xs cursor-pointer transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500/80 focus-visible:ring-offset-1 ${
+        className={`group flex items-center justify-between gap-2 py-[3px] px-1.5 -mx-1.5 rounded-md text-[13px] cursor-pointer transition-colors focus-visible:outline-none focus-visible:ring-1 ${
           isLight
-            ? 'hover:bg-black/[0.03] focus-visible:ring-offset-white text-[#334155]'
-            : 'hover:bg-white/[0.04] focus-visible:ring-offset-neutral-900 text-neutral-300'
+            ? 'hover:bg-black/[0.03] focus-visible:ring-neutral-400 text-neutral-700'
+            : 'hover:bg-white/[0.03] focus-visible:ring-neutral-600 text-neutral-300'
         }`}
-        title={action.target || action.label}
+        title={outcomeBadge ? `${action.target || action.label} · ${outcomeBadge.label}` : (action.target || action.label)}
       >
-        <div className="flex items-center gap-2 min-w-0">
-          {renderActionIcon(action.icon, isLight, isRunning)}
+        <div className="flex items-center gap-2 min-w-0 flex-1">
+          {isRunning || isFailed ? (
+            <>
+              <CallChip
+                icon={chipMeta.icon}
+                name={chipMeta.name}
+                argument={chipMeta.argument}
+                status={isRunning ? 'running' : 'error'}
+                expectedMs={chipMeta.expectedMs}
+                startedAt={tool.startedAt}
+                durationMs={tool.durationMs}
+                size={26}
+                radius={7}
+                color={isLight ? '#18181b' : '#e4e4e7'}
+                surfaceColor={isLight ? '#f4f4f6' : '#1e1e23'}
+                borderColor={isLight ? 'rgba(0, 0, 0, 0.08)' : 'rgba(255, 255, 255, 0.08)'}
+                progressColor={isLight ? '#09090b' : '#ffffff'}
+                progressOpacity={isLight ? 0.06 : 0.08}
+                doneColor={isLight ? '#16a34a' : '#22c55e'}
+                errorColor={isLight ? '#dc2626' : '#ef4444'}
+                washOpacity={0.14}
+                shake={5}
+                showTimer
+                timerTestId={isLive ? 'tool-live-duration' : 'tool-duration'}
+                onRetry={isFailed ? retryHandler : undefined}
+              />
+              {isOpen ? (
+                <ChevronDown className={`w-3 h-3 shrink-0 transition-opacity ${isLight ? 'text-neutral-400' : 'text-neutral-500'}`} />
+              ) : (
+                <ChevronRight className={`w-3 h-3 shrink-0 opacity-50 group-hover:opacity-80 transition-opacity ${isLight ? 'text-neutral-400' : 'text-neutral-500'}`} />
+              )}
+            </>
+          ) : (
+            <>
+              {renderActionIcon(action.icon, isLight, isRunning)}
 
-          <span className={`font-mono text-[11.5px] truncate ${
-            isLight ? 'text-[#1e293b]' : 'text-neutral-200'
-          }`}>
-            {action.label}
-          </span>
+              {action.verb && action.subject ? (
+                <span className="truncate font-sans text-[13px] leading-snug">
+                  <span className="text-neutral-500">
+                    {action.verb}
+                  </span>{' '}
+                  <span className={isLight ? 'text-neutral-800' : 'text-neutral-300'}>
+                    {action.subject}
+                  </span>
+                </span>
+              ) : (
+                <span
+                  className={`font-sans text-[13px] truncate ${
+                    isLight ? 'text-neutral-700' : 'text-neutral-300'
+                  }`}
+                >
+                  {action.label}
+                </span>
+              )}
+
+              {isOpen ? (
+                <ChevronDown className={`w-3 h-3 shrink-0 transition-opacity ${isLight ? 'text-neutral-400' : 'text-neutral-500'}`} />
+              ) : (
+                <ChevronRight className={`w-3 h-3 shrink-0 opacity-0 group-hover:opacity-60 transition-opacity ${isLight ? 'text-neutral-400' : 'text-neutral-500'}`} />
+              )}
+            </>
+          )}
         </div>
 
-        <div className="flex items-center gap-1.5 shrink-0">
-          {outcomeBadge && (
-            <span className={outcomeBadge.className}>
-              {outcomeBadge.label}
-            </span>
+        <div className="flex items-center gap-2 shrink-0">
+          {isFileAction && openFileTab && cleanTargetPath && (
+            <button
+              type="button"
+              onClick={handleOpenInEditor}
+              title={`Open ${cleanTargetPath} in editor`}
+              className={`opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-sans cursor-pointer ${
+                isLight
+                  ? 'text-neutral-500 hover:text-sky-700 hover:bg-black/[0.04]'
+                  : 'text-neutral-400 hover:text-sky-300 hover:bg-white/[0.06]'
+              }`}
+            >
+              <ExternalLink className="w-2.5 h-2.5" />
+              <span>Open</span>
+            </button>
           )}
 
-          {/* M3: Live pulsing dual-ring radar ping while running, frozen neutral text on finish */}
-          {isLive && durationText ? (
-            <span
-              data-testid="tool-live-duration"
-              className={`inline-flex items-center gap-1.5 px-1.5 py-0.5 rounded text-[10px] font-mono tabular-nums font-medium ${
-                isLight
-                  ? 'bg-amber-50 text-amber-700 border border-amber-200/60'
-                  : 'bg-amber-950/40 text-amber-300 border border-amber-700/30'
-              }`}
-              title="Executing..."
-            >
-              <span className="relative flex h-1.5 w-1.5 shrink-0">
-                <span className="motion-safe:animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75" />
-                <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-amber-500" />
-              </span>
-              <span>{durationText}</span>
-            </span>
-          ) : durationText ? (
+          {!(isRunning || isFailed) && durationText ? (
             <span
               data-testid="tool-duration"
-              className={`text-[10px] font-mono tabular-nums ${
+              className={`text-[11px] font-mono tabular-nums opacity-0 group-hover:opacity-100 transition-opacity ${
                 isLight ? 'text-neutral-400' : 'text-neutral-500'
               }`}
             >
               {durationText}
             </span>
           ) : null}
-
-          {isSuccess && !outcomeBadge && (
-            <CheckCircle2 className="w-3 h-3 text-emerald-500/80 shrink-0" />
-          )}
-
-          {isFailed && (
-            <AlertCircle className="w-3 h-3 text-rose-500 shrink-0" />
-          )}
-
-          {hasDetail && (
-            <span className={`${isLight ? 'text-neutral-400' : 'text-neutral-500'} transition-transform`}>
-              {isOpen ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
-            </span>
-          )}
         </div>
       </div>
 
       {/* Expanded read content / command output inline */}
       {isOpen && (
-        <div className={`mt-1.5 mb-2 ml-5 p-3 rounded-lg text-[11px] font-mono leading-relaxed whitespace-pre overflow-x-auto max-h-80 select-text ${
-          isLight
-            ? 'bg-[#f4f4f7] border border-[#e2e4e8] text-[#1e293b]'
-            : 'bg-[#18181c] border border-white/10 text-neutral-300'
-        }`}>
+        <div
+          className={`mt-1.5 mb-2 ml-5 p-3 rounded-lg text-[11.5px] font-mono leading-relaxed overflow-x-auto max-h-80 select-text border ${
+            isLight
+              ? 'bg-[#f8f9fb] border-black/[0.08] text-[#1e293b]'
+              : 'bg-[#18181b] border-white/[0.08] text-neutral-300'
+          }`}
+        >
           {isLoadingAsync ? (
             <div className="flex items-center gap-2 py-2 text-neutral-400">
-              <Loader2 className="w-3.5 h-3.5 animate-spin text-amber-500 shrink-0" />
+              <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" />
               <span>Loading {action.target || 'content'}…</span>
             </div>
           ) : (
             <>
-              {/* File header if reading a file */}
+              {/* Top quiet metadata & control bar inside expanded disclosure */}
+              <div
+                className={`text-[10.5px] font-sans pb-1.5 mb-2 border-b flex items-center justify-between gap-3 ${
+                  isLight ? 'border-black/[0.06] text-neutral-500' : 'border-white/[0.06] text-neutral-400'
+                }`}
+              >
+                <div className="flex items-center gap-2 min-w-0">
+                  {action.icon === 'terminal' || tool.isVerification ? (
+                    <CallChip
+                      icon={chipMeta.icon}
+                      name={chipMeta.name}
+                      argument={chipMeta.argument}
+                      status={isFailed ? 'error' : isRunning ? 'running' : 'done'}
+                      expectedMs={chipMeta.expectedMs}
+                      startedAt={tool.startedAt}
+                      durationMs={tool.durationMs}
+                      size={24}
+                      radius={6}
+                      color={isLight ? '#18181b' : '#e4e4e7'}
+                      surfaceColor={isLight ? '#ffffff' : '#222227'}
+                      borderColor={isLight ? 'rgba(0, 0, 0, 0.08)' : 'rgba(255, 255, 255, 0.08)'}
+                      progressColor={isLight ? '#09090b' : '#ffffff'}
+                      progressOpacity={isLight ? 0.06 : 0.08}
+                      doneColor={isLight ? '#16a34a' : '#22c55e'}
+                      errorColor={isLight ? '#dc2626' : '#ef4444'}
+                      washOpacity={0.12}
+                      shake={4}
+                      showTimer
+                      onRetry={isFailed ? retryHandler : undefined}
+                    />
+                  ) : (
+                    <span className="font-mono truncate">
+                      {safeDetails.filePath || action.target || safeDetails.toolName}
+                    </span>
+                  )}
+                  {asyncContent && !tool.outputLog && (
+                    <span className="opacity-70 shrink-0">(Snapshot)</span>
+                  )}
+                </div>
+                <div className="flex items-center gap-2 shrink-0 tabular-nums">
+                  {outcomeBadge && (
+                    <span className="opacity-75">{outcomeBadge.label}</span>
+                  )}
+                  {action.icon === 'read' && (
+                    <span>{lineCount} {lineCount === 1 ? 'line' : 'lines'}</span>
+                  )}
+                  {tool.exitCode !== undefined && tool.exitCode !== null && (
+                    <span className={tool.exitCode === 0 ? (isLight ? 'text-emerald-700' : 'text-emerald-400/90') : (isLight ? 'text-rose-700' : 'text-rose-400')}>
+                      exit {tool.exitCode}
+                    </span>
+                  )}
+                  {isFileAction && openFileTab && cleanTargetPath && (
+                    <button
+                      type="button"
+                      onClick={handleOpenInEditor}
+                      title={`Open ${cleanTargetPath} in editor`}
+                      className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded transition-colors cursor-pointer ${
+                        isLight ? 'hover:bg-black/[0.06] text-neutral-700' : 'hover:bg-white/[0.08] text-neutral-300'
+                      }`}
+                    >
+                      <ExternalLink className="w-2.5 h-2.5" />
+                      <span>Open file</span>
+                    </button>
+                  )}
+                  {outputContent && lineCount > 1 && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setWrapLines((w) => !w);
+                      }}
+                      title={wrapLines ? 'Disable line wrap' : 'Enable line wrap'}
+                      className={`p-1 rounded transition-colors cursor-pointer ${
+                        wrapLines
+                          ? isLight ? 'bg-black/[0.06] text-neutral-800' : 'bg-white/[0.08] text-neutral-200'
+                          : isLight ? 'hover:bg-black/[0.05] text-neutral-500' : 'hover:bg-white/[0.06] text-neutral-400'
+                      }`}
+                    >
+                      <WrapText className="w-3 h-3" />
+                    </button>
+                  )}
+                  {outputContent && (
+                    <button
+                      type="button"
+                      onClick={handleCopyDetails}
+                      title={copiedOutput ? 'Copied' : 'Copy output'}
+                      className={`p-1 rounded transition-colors cursor-pointer ${
+                        isLight ? 'hover:bg-black/[0.05] text-neutral-500 hover:text-neutral-800' : 'hover:bg-white/[0.06] text-neutral-400 hover:text-neutral-200'
+                      }`}
+                    >
+                      {copiedOutput ? <Check className="w-3 h-3 text-emerald-500" /> : <Copy className="w-3 h-3" />}
+                    </button>
+                  )}
+                </div>
+              </div>
+
               {action.icon === 'read' && action.target ? (
-                <>
-                  <div className={`text-[10px] font-sans pb-1.5 mb-2 border-b flex items-center justify-between ${
-                    isLight ? 'border-neutral-200 text-neutral-500' : 'border-white/10 text-neutral-400'
-                  }`}>
-                    <div className="flex items-center gap-1.5 min-w-0">
-                      <span className="font-mono font-medium truncate">{safeDetails.filePath || action.target}</span>
-                      {asyncContent && !tool.outputLog && (
-                        <span className="text-[9px] px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-500 font-sans font-medium shrink-0">
-                          (Current snapshot)
+                lines.length > 1 ? (
+                  <div className="space-y-0.5">
+                    {lines.map((ln, lIdx) => (
+                      <div key={lIdx} className="flex items-start gap-2.5">
+                        <span
+                          className={`w-7 shrink-0 text-right select-none tabular-nums text-[10.5px] opacity-45 ${
+                            isLight ? 'text-neutral-500' : 'text-neutral-500'
+                          }`}
+                        >
+                          {lIdx + 1}
                         </span>
-                      )}
-                    </div>
-                    <span className="shrink-0">{lineCount} {lineCount === 1 ? 'line' : 'lines'}</span>
+                        <span className={`min-w-0 flex-1 ${wrapLines ? 'whitespace-pre-wrap break-words' : 'whitespace-pre'}`}>
+                          {ln || ' '}
+                        </span>
+                      </div>
+                    ))}
                   </div>
-                  <div className="whitespace-pre-wrap">{outputContent}</div>
-                </>
+                ) : (
+                  <div className={wrapLines ? 'whitespace-pre-wrap break-words' : 'whitespace-pre'}>{outputContent}</div>
+                )
               ) : (
                 <>
-                  {/* Running state indicator */}
                   {isRunning && (
                     <div
                       data-testid="running-observation-panel"
-                      className={`mb-2 p-2 rounded-md border flex items-center gap-2 ${
-                        isLight ? 'bg-teal-50/70 border-teal-200 text-teal-900' : 'bg-[#0c1f24] border-[#134e4a]/70 text-teal-300'
+                      className={`mb-2 px-2.5 py-1.5 rounded border flex items-center gap-2 ${
+                        isLight
+                          ? 'bg-neutral-100 border-neutral-200 text-neutral-700'
+                          : 'bg-white/[0.03] border-white/[0.08] text-neutral-300'
                       }`}
                     >
-                      <Loader2 className="w-3.5 h-3.5 text-amber-500 animate-spin shrink-0" />
+                      <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0 text-neutral-400" />
                       <span className="text-[11px] font-mono">Executing process…</span>
                     </div>
                   )}
 
-                  {/* Terminal command preview with sanitized allowlist description */}
-                  {action.icon === 'terminal' && (tool.command || tool.workingDirectory) && (
-                    <div className="mb-2 text-[10.5px] opacity-70 border-b border-current/10 pb-1.5">
-                      {`$ ${safeDetails.commandDescription || safeDetails.toolName}\n`}
-                      {tool.workingDirectory ? `cd ${tool.workingDirectory}\n` : ''}
-                      {tool.exitCode !== undefined && tool.exitCode !== null ? `Exit code: ${tool.exitCode}` : ''}
+                  {tool.workingDirectory && (
+                    <div className="mb-1.5 text-[10.5px] opacity-65">
+                      cd {tool.workingDirectory}
+                      {tool.exitCode !== undefined && tool.exitCode !== null ? ` · exit ${tool.exitCode}` : ''}
                     </div>
                   )}
 
-                  {/* Error display */}
                   {safeDetails.errorInfo || tool.error ? (
-                    <div className={isLight ? 'text-rose-700' : 'text-rose-400'}>
+                    <div className={`${isLight ? 'text-rose-700' : 'text-rose-400'} ${wrapLines ? 'whitespace-pre-wrap' : 'whitespace-pre'}`}>
                       <span className="font-semibold">Error: </span>
                       {safeDetails.errorInfo || redactSensitiveData(tool.error || '').text}
                       {tool.outputLog ? `\n\n${redactSensitiveData(tool.outputLog).text}` : ''}
                     </div>
                   ) : (
-                    /* M3: Canonical Trajectory parser for command outputs */
                     <CanonicalTrajectoryView
                       blocks={parseCanonicalTrajectory(outputContent ?? '')}
                       isLight={isLight}

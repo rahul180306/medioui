@@ -50,7 +50,7 @@ app.use('/api', (req, res) => {
 if (!isProduction) {
   const vite = await createViteServer({
     root: path.resolve(__dirname, 'mediobot-ui-refinement'),
-    server: { middlewareMode: true, hmr: false, ws: false, host: '127.0.0.1' },
+    server: { middlewareMode: true, hmr: false, ws: false, host: '0.0.0.0', allowedHosts: true },
     appType: 'spa',
   });
   app.use(vite.middlewares);
@@ -64,8 +64,8 @@ if (!isProduction) {
   });
 }
 
-const server = app.listen(port, '127.0.0.1', () => {
+const server = app.listen(port, '0.0.0.0', () => {
   const address = server.address();
   const boundPort = address && typeof address === 'object' ? address.port : port;
-  process.stdout.write(`Mediobot offline demo UI listening at http://127.0.0.1:${boundPort}\n`);
+  process.stdout.write(`Mediobot offline demo UI listening at http://0.0.0.0:${boundPort}\n`);
 });

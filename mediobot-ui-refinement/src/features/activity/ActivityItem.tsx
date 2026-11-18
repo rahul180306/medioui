@@ -23,7 +23,8 @@ import { ToolExecutionView } from './ToolExecutionView';
 import { ApprovalBanner } from './ApprovalBanner';
 import { PerceptionView } from './PerceptionView';
 import { useApp } from '../../state/AppContext';
-import LatticeLoader from '../../components/LatticeLoader';
+import { CompactionGlyph } from './subcomponents/ExecutionGlyphs';
+import ThoughtLine from '../../components/ThoughtLine';
 
 export const ActivityItem: React.FC<{
   item: ThreadItem;
@@ -54,13 +55,32 @@ export const ActivityItem: React.FC<{
   // If item is context compaction
   if (
     (item.activityState as string) === 'compacted' ||
-    item.activityLabel?.toLowerCase().includes('compacted') ||
+    item.activityLabel?.toLowerCase().includes('compact') ||
     item.text?.toLowerCase().includes('compacted')
   ) {
+    const isCompactingNow =
+      isActive || item.activityLabel?.toLowerCase().includes('compacting');
     return (
-      <div data-testid="context-compacted" className={`flex items-center gap-1.5 py-1 text-xs select-none ${isLight ? 'text-neutral-500' : 'text-neutral-400'}`}>
-        <span>↩</span>
-        <span>Context automatically compacted</span>
+      <div
+        data-testid="context-compacted"
+        className={`flex items-center gap-2 py-1 text-[13px] select-none ${
+          isLight ? 'text-neutral-500' : 'text-neutral-400'
+        }`}
+      >
+        <CompactionGlyph className="w-3.5 h-3.5 shrink-0 opacity-80" />
+        <span
+          className={
+            isCompactingNow
+              ? `animate-shimmer-text bg-clip-text text-transparent ${
+                  isLight
+                    ? 'bg-gradient-to-r from-neutral-500 via-neutral-900 to-neutral-500'
+                    : 'bg-gradient-to-r from-neutral-400 via-neutral-100 to-neutral-400'
+                }`
+              : ''
+          }
+        >
+          {isCompactingNow ? 'Compacting context' : 'Context automatically compacted'}
+        </span>
       </div>
     );
   }
@@ -70,8 +90,7 @@ export const ActivityItem: React.FC<{
     return <PerceptionView computerAction={item.computerAction} perception={item.perception} />;
   }
 
-  // In Main Chat, strip ALL raw activity boxes, delegation notices, and tool chatter.
-  // Main Chat is strictly clean executive narrative streaming with zero nested border boxes.
+  // In Main Chat, strip raw specialist activity chatter so the timeline stays calm and scannable
   if (isMainChat) {
     return null;
   }
@@ -85,6 +104,8 @@ export const ActivityItem: React.FC<{
       item.activityLabel?.toLowerCase().includes('error') ||
       item.text?.toLowerCase().includes('error');
 
+    const mutedIconColor = isLight ? 'text-neutral-400' : 'text-neutral-500';
+
     if (isFailedLabel || (turnStatus === 'failed' && isActive)) {
       return <AlertTriangle className="w-3.5 h-3.5 text-rose-400 shrink-0" />;
     }
@@ -96,37 +117,36 @@ export const ActivityItem: React.FC<{
     }
     if (isActive) {
       return (
-        <Loader2 className="w-3.5 h-3.5 text-amber-500 animate-spin shrink-0" />
+        <Loader2 className={`w-3.5 h-3.5 animate-spin shrink-0 ${isLight ? 'text-neutral-500' : 'text-neutral-400'}`} />
       );
     }
 
-    // Historical / completed events
     switch (item.activityState) {
       case 'thinking':
-        return <Brain className="w-3.5 h-3.5 text-neutral-400 shrink-0" />;
+        return <Brain className={`w-3.5 h-3.5 ${mutedIconColor} shrink-0`} />;
       case 'planning':
-        return <ListTodo className="w-3.5 h-3.5 text-neutral-400 shrink-0" />;
+        return <ListTodo className={`w-3.5 h-3.5 ${mutedIconColor} shrink-0`} />;
       case 'inspecting':
-        return <Search className="w-3.5 h-3.5 text-neutral-400 shrink-0" />;
+        return <Search className={`w-3.5 h-3.5 ${mutedIconColor} shrink-0`} />;
       case 'editing':
-        return <FileEdit className="w-3.5 h-3.5 text-neutral-400 shrink-0" />;
+        return <FileEdit className={`w-3.5 h-3.5 ${mutedIconColor} shrink-0`} />;
       case 'running':
-        return <Play className="w-3.5 h-3.5 text-neutral-400 shrink-0" />;
+        return <Play className={`w-3.5 h-3.5 ${mutedIconColor} shrink-0`} />;
       case 'testing':
-        return <FlaskConical className="w-3.5 h-3.5 text-neutral-400 shrink-0" />;
+        return <FlaskConical className={`w-3.5 h-3.5 ${mutedIconColor} shrink-0`} />;
       case 'verifying':
-        return <CheckCircle className="w-3.5 h-3.5 text-emerald-400 shrink-0" />;
+        return <CheckCircle className="w-3.5 h-3.5 text-emerald-500/80 shrink-0" />;
       case 'verified':
       case 'completed':
-        return <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500/80 shrink-0" />;
+        return <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500/75 shrink-0" />;
       case 'collaborating':
-        return <Users className="w-3.5 h-3.5 text-neutral-400 shrink-0" />;
+        return <Users className={`w-3.5 h-3.5 ${mutedIconColor} shrink-0`} />;
       case 'waiting':
       case 'waiting_for_approval':
-        return <Clock className="w-3.5 h-3.5 text-amber-400 shrink-0" />;
+        return <Clock className="w-3.5 h-3.5 text-amber-400/80 shrink-0" />;
       case 'retrying':
       case 'recovered':
-        return <RotateCcw className="w-3.5 h-3.5 text-sky-400 shrink-0" />;
+        return <RotateCcw className={`w-3.5 h-3.5 ${mutedIconColor} shrink-0`} />;
       case 'blocked':
       case 'failed':
         return <AlertTriangle className="w-3.5 h-3.5 text-rose-400 shrink-0" />;
@@ -134,13 +154,13 @@ export const ActivityItem: React.FC<{
         if (turnStatus === 'failed') {
           return <AlertTriangle className="w-3.5 h-3.5 text-rose-400 shrink-0" />;
         }
-        return <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500/80 shrink-0" />;
+        return <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500/75 shrink-0" />;
     }
   };
 
   const hasDetail = Boolean(item.activityDetail);
 
-  // Suppress mechanical lifecycle heartbeats that clutter the chat like in Image 5
+  // Suppress mechanical lifecycle heartbeats that clutter the timeline
   const isHeartbeatNoise =
     !hasDetail &&
     (item.activityLabel?.endsWith('progress.') ||
@@ -155,42 +175,79 @@ export const ActivityItem: React.FC<{
   }
 
   return (
-    <div className="py-1 select-none">
+    <div className="py-0.5 select-none">
       <div
         onClick={() => hasDetail && setIsDetailOpen((p) => !p)}
-        className={`flex items-center gap-2 text-xs ${
-          isLight ? 'text-[#64748b]' : 'text-neutral-400'
-        } transition-colors ${
-          hasDetail ? (isLight ? 'cursor-pointer hover:text-[#09090b]' : 'cursor-pointer hover:text-neutral-200') : ''
+        className={`group flex items-center justify-between gap-2 py-[3px] px-1.5 -mx-1.5 rounded-md text-[13px] transition-colors ${
+          hasDetail
+            ? isLight
+              ? 'cursor-pointer hover:bg-black/[0.03] text-neutral-600 hover:text-neutral-900'
+              : 'cursor-pointer hover:bg-white/[0.03] text-neutral-400 hover:text-neutral-200'
+            : isLight
+            ? 'text-neutral-600'
+            : 'text-neutral-400'
         }`}
       >
-        <span className="shrink-0">{getIcon()}</span>
-        <span className={`font-medium ${isLight ? 'text-[#18181b]' : 'text-neutral-300'}`}>{item.activityLabel || 'Activity'}</span>
+        <div className="flex items-center gap-2 min-w-0">
+          {isActive ? (
+            <ThoughtLine
+              working={true}
+              label={item.activityLabel || 'Thinking…'}
+              glyph={item.activityState === 'thinking' || item.activityState === 'planning' ? 'sparkle' : 'dot'}
+              fontSize={13}
+              collapsible={false}
+              showTimer={false}
+              isLight={isLight}
+              color={isLight ? '#52525b' : '#a1a1aa'}
+              glyphColor={item.activityState === 'thinking' || item.activityState === 'planning' ? (isLight ? '#2563eb' : '#60a5fa') : (isLight ? '#52525b' : '#a1a1aa')}
+            />
+          ) : (
+            <>
+              <span className="shrink-0">{getIcon()}</span>
+              <span
+                className={`truncate ${
+                  isLight ? 'text-neutral-700' : 'text-neutral-300'
+                }`}
+              >
+                {item.activityLabel || 'Activity'}
+              </span>
+            </>
+          )}
+
+          {hasDetail && (
+            <span className={isLight ? 'text-neutral-400' : 'text-neutral-500'}>
+              {isDetailOpen ? (
+                <ChevronDown className="w-3 h-3 shrink-0" />
+              ) : (
+                <ChevronRight className="w-3 h-3 shrink-0 opacity-0 group-hover:opacity-60 transition-opacity" />
+              )}
+            </span>
+          )}
+        </div>
 
         {item.durationMs && (
-          <span className={`text-[11px] ${isLight ? 'text-[#94a3b8]' : 'text-neutral-500'} tabular-nums`}>
+          <span
+            className={`text-[11px] font-mono tabular-nums shrink-0 ${
+              isLight ? 'text-neutral-400' : 'text-neutral-500'
+            }`}
+          >
             {(item.durationMs / 1000).toFixed(1)}s
-          </span>
-        )}
-
-        {hasDetail && (
-          <span className={isLight ? 'text-[#94a3b8]' : 'text-neutral-500'}>
-            {isDetailOpen ? (
-              <ChevronDown className="w-3 h-3" />
-            ) : (
-              <ChevronRight className="w-3 h-3" />
-            )}
           </span>
         )}
       </div>
 
       {isDetailOpen && item.activityDetail && (
-        <div className={`mt-1 ml-5 p-2.5 ${
-          isLight ? 'bg-[#f8f9fa] border-[#e2e4e8] text-[#334155]' : 'bg-[#18181d] border-[#2b2b34] text-neutral-300'
-        } border rounded-lg text-[11px] font-mono leading-relaxed whitespace-pre-line`}>
+        <div
+          className={`mt-1 mb-1.5 ml-5 p-2.5 rounded-lg border text-[11.5px] font-mono leading-relaxed whitespace-pre-line ${
+            isLight
+              ? 'bg-[#f8f9fb] border-black/[0.08] text-neutral-700'
+              : 'bg-white/[0.02] border-white/[0.06] text-neutral-300'
+          }`}
+        >
           {item.activityDetail}
         </div>
       )}
     </div>
   );
 };
+

@@ -173,23 +173,25 @@ export const DiffViewer: React.FC<{
     <div
       data-testid="file-change-review-card"
       className={`my-2.5 border ${
-        isLight ? 'border-[#e2e4e8] bg-white shadow-xs' : 'border-[#2b2b32] bg-[#18181c]'
+        isLight
+          ? 'border-black/[0.08] bg-white'
+          : 'border-white/[0.08] bg-[#161619]'
       } rounded-xl overflow-hidden text-xs font-mono`}
     >
-      {/* File Diff Header */}
+      {/* Unified Calm Diff Header */}
       <div
         onClick={() => setIsExpanded((p) => !p)}
-        className={`flex items-center justify-between px-3.5 py-2.5 ${
+        className={`flex items-center justify-between px-3.5 py-2 ${
           isLight
-            ? 'bg-[#f8f9fa] hover:bg-[#f1f2f5] border-b border-[#e2e4e8]'
-            : 'bg-[#202025] hover:bg-[#24242a] border-b border-[#2b2b32]'
+            ? 'bg-[#fafafa] hover:bg-[#f4f4f6] border-b border-black/[0.06]'
+            : 'bg-white/[0.025] hover:bg-white/[0.04] border-b border-white/[0.06]'
         } cursor-pointer select-none transition-colors`}
       >
-        <div className="flex items-center gap-2.5 min-w-0 flex-1 pr-2">
+        <div className="flex items-center gap-2 min-w-0 flex-1 pr-2">
           {isExpanded ? (
-            <ChevronDown className={`w-3.5 h-3.5 ${isLight ? 'text-[#64748b]' : 'text-neutral-400'} shrink-0`} />
+            <ChevronDown className={`w-3.5 h-3.5 ${isLight ? 'text-neutral-500' : 'text-neutral-400'} shrink-0`} />
           ) : (
-            <ChevronRight className={`w-3.5 h-3.5 ${isLight ? 'text-[#64748b]' : 'text-neutral-400'} shrink-0`} />
+            <ChevronRight className={`w-3.5 h-3.5 ${isLight ? 'text-neutral-500' : 'text-neutral-400'} shrink-0`} />
           )}
 
           <button
@@ -204,8 +206,8 @@ export const DiffViewer: React.FC<{
             className="flex items-center gap-1.5 hover:underline cursor-pointer group text-left truncate"
             title={`Click to open ${diff.filePath} in editor`}
           >
-            <FileCode className={`w-3.5 h-3.5 ${isLight ? 'text-[#64748b]' : 'text-neutral-400'} group-hover:text-sky-500 shrink-0`} />
-            <span className={`${isLight ? 'text-[#09090b]' : 'text-neutral-200'} font-medium truncate group-hover:text-sky-500`}>
+            <FileCode className={`w-3.5 h-3.5 ${isLight ? 'text-neutral-500' : 'text-neutral-400'} group-hover:text-sky-500 shrink-0`} />
+            <span className={`${isLight ? 'text-neutral-900' : 'text-neutral-200'} font-medium truncate group-hover:text-sky-500`}>
               {diff.filePath}
             </span>
           </button>
@@ -215,26 +217,26 @@ export const DiffViewer: React.FC<{
 
         <div className="flex items-center gap-2.5 shrink-0">
           {/* Additions / Deletions */}
-          <div className="flex items-center gap-1.5 tabular-nums text-[11px] font-semibold">
-            <span className={isLight ? 'text-emerald-700' : 'text-emerald-400'}>+{effectiveAdditions}</span>
-            <span className={isLight ? 'text-rose-700' : 'text-rose-400'}>-{effectiveDeletions}</span>
+          <div className="flex items-center gap-1.5 tabular-nums text-[11px] font-medium">
+            <span className={isLight ? 'text-emerald-700' : 'text-emerald-400/90'}>+{effectiveAdditions}</span>
+            <span className={isLight ? 'text-rose-700' : 'text-rose-400/90'}>-{effectiveDeletions}</span>
           </div>
 
           {/* Interactive State Transition Controls */}
-          <div className="flex items-center gap-1 pl-1 border-l border-black/10 dark:border-white/10" onClick={(e) => e.stopPropagation()}>
+          <div className="flex items-center gap-0.5 pl-2 border-l border-black/[0.08] dark:border-white/[0.08]" onClick={(e) => e.stopPropagation()}>
             {effectiveState !== 'verified' && (
               <button
                 type="button"
                 onClick={(e) => handleSetState(e, 'verified')}
                 disabled={!isSimulated}
-                className={`px-2 py-0.5 rounded text-[10px] font-sans font-medium transition-colors ${
+                className={`px-2 py-0.5 rounded-md text-[10.5px] font-sans font-medium whitespace-nowrap transition-colors ${
                   !isSimulated
                     ? 'opacity-40 cursor-not-allowed text-neutral-400'
                     : isLight
-                    ? 'hover:bg-emerald-100 text-emerald-800'
-                    : 'hover:bg-emerald-950 text-emerald-300'
+                    ? 'hover:bg-black/[0.05] text-emerald-700'
+                    : 'hover:bg-white/[0.06] text-emerald-300/90'
                 }`}
-                title={isSimulated ? "Simulate verification in controlled demonstration" : "Connected-mode operations require authorized backend execution"}
+                title={isSimulated ? 'Simulate verification in controlled demonstration' : 'Connected-mode operations require authorized backend execution'}
               >
                 {isSimulated ? 'Verify (Simulated)' : 'Verify'}
               </button>
@@ -244,14 +246,14 @@ export const DiffViewer: React.FC<{
                 type="button"
                 onClick={(e) => handleSetState(e, 'applied')}
                 disabled={!isSimulated}
-                className={`px-2 py-0.5 rounded text-[10px] font-sans font-medium transition-colors ${
+                className={`px-2 py-0.5 rounded-md text-[10.5px] font-sans font-medium whitespace-nowrap transition-colors ${
                   !isSimulated
                     ? 'opacity-40 cursor-not-allowed text-neutral-400'
                     : isLight
-                    ? 'hover:bg-blue-100 text-blue-800'
-                    : 'hover:bg-blue-950 text-blue-300'
+                    ? 'hover:bg-black/[0.05] text-sky-700'
+                    : 'hover:bg-white/[0.06] text-sky-300/90'
                 }`}
-                title={isSimulated ? "Simulate applying change in controlled demonstration" : "Connected-mode operations require authorized backend execution"}
+                title={isSimulated ? 'Simulate applying change in controlled demonstration' : 'Connected-mode operations require authorized backend execution'}
               >
                 {isSimulated ? 'Apply (Simulated)' : 'Apply'}
               </button>
@@ -261,14 +263,14 @@ export const DiffViewer: React.FC<{
                 type="button"
                 onClick={(e) => handleSetState(e, 'rejected')}
                 disabled={!isSimulated}
-                className={`px-2 py-0.5 rounded text-[10px] font-sans font-medium transition-colors ${
+                className={`px-2 py-0.5 rounded-md text-[10.5px] font-sans font-medium whitespace-nowrap transition-colors ${
                   !isSimulated
                     ? 'opacity-40 cursor-not-allowed text-neutral-400'
                     : isLight
-                    ? 'hover:bg-rose-100 text-rose-800'
-                    : 'hover:bg-rose-950 text-rose-300'
+                    ? 'hover:bg-black/[0.05] text-rose-700'
+                    : 'hover:bg-white/[0.06] text-rose-300/90'
                 }`}
-                title={isSimulated ? "Simulate rejecting proposed change (does not modify files)" : "Connected-mode operations require authorized backend execution"}
+                title={isSimulated ? 'Simulate rejecting proposed change (does not modify files)' : 'Connected-mode operations require authorized backend execution'}
               >
                 {isSimulated ? 'Reject (Simulated)' : 'Reject'}
               </button>
@@ -276,10 +278,11 @@ export const DiffViewer: React.FC<{
           </div>
 
           <button
+            type="button"
             onClick={handleCopy}
             title="Copy diff"
-            className={`p-1 rounded ${
-              isLight ? 'text-[#64748b] hover:text-[#09090b] hover:bg-[#eaebee]' : 'text-neutral-400 hover:text-white hover:bg-[#2e2e36]'
+            className={`p-1 rounded-md ${
+              isLight ? 'text-neutral-500 hover:text-neutral-900 hover:bg-black/[0.05]' : 'text-neutral-400 hover:text-neutral-100 hover:bg-white/[0.06]'
             } transition-colors cursor-pointer`}
           >
             {copied ? <Check className={`w-3 h-3 ${isLight ? 'text-emerald-600' : 'text-emerald-400'}`} /> : <Copy className="w-3 h-3" />}
@@ -287,88 +290,85 @@ export const DiffViewer: React.FC<{
         </div>
       </div>
 
-      {/* Simulation Disclosure */}
-      {isSimulated && (
-        <div
-          data-testid="diff-simulation-disclosure"
-          className={`px-3 py-1 text-[10.5px] font-sans border-b flex items-center justify-between ${
-            isLight ? 'bg-amber-50/70 border-amber-200/80 text-amber-900' : 'bg-amber-950/20 border-amber-900/40 text-amber-300'
-          }`}
-        >
-          <span>Simulated demonstration change. Does not modify host filesystem.</span>
-          <span className="text-[10px] font-mono opacity-75">Demonstration only</span>
-        </div>
-      )}
-
       {/* Receipt Validation Error */}
       {receiptError && (
         <div
           data-testid="diff-receipt-error"
-          className={`px-3 py-1.5 text-[11px] font-sans border-b flex items-center gap-1.5 ${
+          className={`px-3.5 py-1.5 text-[11px] font-sans border-b flex items-center gap-1.5 ${
             isLight
-              ? 'bg-rose-50 border-rose-200 text-rose-800'
-              : 'bg-rose-950/40 border-rose-900/60 text-rose-300'
+              ? 'bg-rose-50/70 border-rose-200/80 text-rose-800'
+              : 'bg-rose-950/30 border-rose-900/40 text-rose-300'
           }`}
         >
-          <AlertCircle className="w-3.5 h-3.5 shrink-0 text-rose-600 dark:text-rose-400" />
+          <AlertCircle className="w-3.5 h-3.5 shrink-0 text-rose-500" />
           <span className="font-medium">{receiptError}</span>
         </div>
       )}
 
-      {/* Verification or Effect Evidence Sub-bar */}
-      {(diff.verificationEvidence || diff.receipt?.verificationEvidence || diff.receipt?.effectEvidence) && (
+      {/* Compact Unified Metadata Sub-strip (Disclosure + Evidence) */}
+      {(isSimulated || diff.verificationEvidence || diff.receipt?.verificationEvidence || diff.receipt?.effectEvidence) && (
         <div
-          data-testid="diff-verification-evidence"
-          className={`px-3 py-1.5 text-[11px] font-sans border-b flex items-center justify-between ${
-            effectiveState === 'verified'
-              ? isLight
-                ? 'bg-emerald-50/70 border-emerald-200/80 text-emerald-900'
-                : 'bg-emerald-950/20 border-emerald-900/40 text-emerald-200'
-              : effectiveState === 'applied'
-              ? isLight
-                ? 'bg-blue-50/70 border-blue-200/80 text-blue-900'
-                : 'bg-blue-950/20 border-blue-900/40 text-blue-200'
-              : isLight
-              ? 'bg-[#f8f9fa] border-[#e2e4e8] text-[#475569]'
-              : 'bg-[#18181d] border-[#2b2b32] text-neutral-400'
+          className={`px-3.5 py-1.5 text-[11px] font-sans border-b space-y-1 ${
+            isLight ? 'bg-[#fcfcfd] border-black/[0.05] text-neutral-500' : 'bg-white/[0.015] border-white/[0.05] text-neutral-400'
           }`}
         >
-          <div className="flex items-center gap-1.5 truncate">
-            {effectiveState === 'applied' ? (
-              <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
-            ) : (
-              <ShieldCheck className="w-3.5 h-3.5 shrink-0" />
-            )}
-            <span className="truncate">
-              {effectiveState === 'applied' && diff.receipt?.effectEvidence
-                ? `Effect: ${diff.receipt.effectEvidence}`
-                : `Evidence: ${diff.receipt?.verificationEvidence || diff.verificationEvidence}`}
-            </span>
-          </div>
-          <span className="text-[10px] font-mono shrink-0 opacity-75">
-            {isSimulated
-              ? 'Controlled demonstration'
-              : diff.receipt?.authorizedBy
-              ? `Authorized by ${diff.receipt.authorizedBy}`
-              : 'Authorized'}
-          </span>
+          {isSimulated && (
+            <div
+              data-testid="diff-simulation-disclosure"
+              className="flex items-center justify-between gap-3"
+            >
+              <span className="truncate">Simulated demonstration change. Does not modify host filesystem.</span>
+              <span className={`text-[10px] font-mono shrink-0 ${isLight ? 'text-neutral-400' : 'text-neutral-500'}`}>
+                Demonstration only
+              </span>
+            </div>
+          )}
+
+          {(diff.verificationEvidence || diff.receipt?.verificationEvidence || diff.receipt?.effectEvidence) && (
+            <div
+              data-testid="diff-verification-evidence"
+              className="flex items-center justify-between gap-3"
+            >
+              <div className="flex items-center gap-1.5 min-w-0">
+                {effectiveState === 'applied' ? (
+                  <CheckCircle2 className={`w-3 h-3 shrink-0 ${isLight ? 'text-sky-600' : 'text-sky-400/80'}`} />
+                ) : effectiveState === 'verified' ? (
+                  <ShieldCheck className={`w-3 h-3 shrink-0 ${isLight ? 'text-emerald-600' : 'text-emerald-400/80'}`} />
+                ) : (
+                  <ShieldCheck className={`w-3 h-3 shrink-0 ${isLight ? 'text-neutral-400' : 'text-neutral-500'}`} />
+                )}
+                <span className="truncate">
+                  {effectiveState === 'applied' && diff.receipt?.effectEvidence
+                    ? `Effect: ${diff.receipt.effectEvidence}`
+                    : `Evidence: ${diff.receipt?.verificationEvidence || diff.verificationEvidence}`}
+                </span>
+              </div>
+              <span className={`text-[10px] font-mono shrink-0 ${isLight ? 'text-neutral-400' : 'text-neutral-500'}`}>
+                {isSimulated
+                  ? 'Controlled demonstration'
+                  : diff.receipt?.authorizedBy
+                  ? `Authorized by ${diff.receipt.authorizedBy}`
+                  : 'Authorized'}
+              </span>
+            </div>
+          )}
         </div>
       )}
 
       {/* Code Hunks */}
       {isExpanded && diff.hunks && (
-        <div className="overflow-x-auto text-[11px] leading-5 py-1">
+        <div className="overflow-x-auto text-[11.5px] leading-[1.45rem] py-1">
           {diff.truncated && (
-            <div className={`px-3 py-1 ${isLight ? 'text-[#64748b]' : 'text-neutral-500'} font-sans`}>
+            <div className={`px-3.5 py-1 text-[11px] ${isLight ? 'text-neutral-500' : 'text-neutral-500'} font-sans`}>
               Large diff excerpt; addition and deletion totals are exact.
             </div>
           )}
           {diff.hunks.map((hunk, hIdx) => (
             <div key={hIdx}>
               <div
-                className={`px-3 py-0.5 ${
-                  isLight ? 'bg-[#f1f2f5] text-[#64748b]' : 'bg-[#1f1f26] text-neutral-500'
-                } font-semibold select-none text-[10px]`}
+                className={`px-3.5 py-0.5 ${
+                  isLight ? 'bg-[#f4f4f6] text-neutral-500' : 'bg-white/[0.025] text-neutral-500'
+                } font-medium select-none text-[10.5px]`}
               >
                 {hunk.header}
               </div>
@@ -381,26 +381,32 @@ export const DiffViewer: React.FC<{
                     className={`flex items-start px-2 font-mono ${
                       isAdd
                         ? isLight
-                          ? 'bg-emerald-50 text-emerald-800'
-                          : 'bg-emerald-950/25 text-emerald-300'
+                          ? 'bg-emerald-500/[0.08] text-emerald-900'
+                          : 'bg-emerald-500/[0.08] text-emerald-200/90'
                         : isRemove
                         ? isLight
-                          ? 'bg-rose-50 text-rose-800 line-through opacity-90'
-                          : 'bg-rose-950/25 text-rose-300 line-through opacity-85'
+                          ? 'bg-rose-500/[0.08] text-rose-900'
+                          : 'bg-rose-500/[0.08] text-rose-200/85'
                         : isLight
-                        ? 'text-[#334155] hover:bg-[#f8f9fa]'
-                        : 'text-neutral-400 hover:bg-[#1d1d23]'
+                        ? 'text-neutral-700 hover:bg-black/[0.02]'
+                        : 'text-neutral-400 hover:bg-white/[0.02]'
                     }`}
                   >
                     {/* Line numbers */}
-                    <span className={`w-7 shrink-0 text-right pr-2 select-none ${isLight ? 'text-[#94a3b8]' : 'text-neutral-600'} tabular-nums`}>
+                    <span className={`w-7 shrink-0 text-right pr-2 select-none ${isLight ? 'text-neutral-400' : 'text-neutral-600'} tabular-nums`}>
                       {line.oldLineNo ?? ''}
                     </span>
-                    <span className={`w-7 shrink-0 text-right pr-2 select-none ${isLight ? 'text-[#94a3b8]' : 'text-neutral-600'} tabular-nums`}>
+                    <span className={`w-7 shrink-0 text-right pr-2 select-none ${isLight ? 'text-neutral-400' : 'text-neutral-600'} tabular-nums`}>
                       {line.newLineNo ?? ''}
                     </span>
                     {/* Prefix */}
-                    <span className="w-4 shrink-0 text-center select-none font-bold">
+                    <span className={`w-4 shrink-0 text-center select-none font-semibold ${
+                      isAdd
+                        ? isLight ? 'text-emerald-700' : 'text-emerald-400'
+                        : isRemove
+                        ? isLight ? 'text-rose-700' : 'text-rose-400'
+                        : ''
+                    }`}>
                       {isAdd ? '+' : isRemove ? '-' : ' '}
                     </span>
                     {/* Code Content */}

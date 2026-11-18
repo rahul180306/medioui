@@ -2,7 +2,6 @@ import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { animate, useReducedMotion } from 'motion/react';
 import { HugeiconsIcon } from '@hugeicons/react';
 import { ArrowDown01Icon, SparklesIcon, Tick02Icon } from '@hugeicons/core-free-icons';
-import './ThoughtLine.css';
 
 const EASE_OUT = [0.23, 1, 0.32, 1] as const;
 const EASE_IN_OUT = [0.77, 0, 0.175, 1] as const;
@@ -25,6 +24,7 @@ export interface ThoughtLineProps {
   steps?: string[];
   collapsible?: boolean;
   collapseOnSettle?: boolean;
+  defaultOpen?: boolean;
   color?: string;
   glyphColor?: string;
   fontSize?: number;
@@ -37,11 +37,13 @@ export interface ThoughtLineProps {
   working?: boolean;
   settleAfter?: number;
   elapsed?: number;
+  startedAt?: number;
   showTimer?: boolean;
   onSettle?: (seconds: number) => void;
   className?: string;
   style?: React.CSSProperties;
   children?: React.ReactNode;
+  rightSlot?: React.ReactNode;
 
   // Backward-compatibility props:
   active?: boolean;
@@ -57,6 +59,7 @@ export const ThoughtLine: React.FC<ThoughtLineProps> = ({
   steps = EMPTY_STEPS,
   collapsible = true,
   collapseOnSettle = true,
+  defaultOpen,
   color,
   glyphColor = '',
   fontSize = 13.5,
@@ -69,11 +72,13 @@ export const ThoughtLine: React.FC<ThoughtLineProps> = ({
   working,
   settleAfter = 0,
   elapsed,
+  startedAt,
   showTimer = true,
   onSettle,
   className = '',
   style,
   children,
+  rightSlot,
   active,
   isLight = false,
   durationText,
@@ -81,7 +86,7 @@ export const ThoughtLine: React.FC<ThoughtLineProps> = ({
   const isWorkingControlled = working ?? active ?? true;
   const reduce = useReducedMotion();
   const [autoSettled, setAutoSettled] = useState(false);
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(() => Boolean(defaultOpen ?? isWorkingControlled));
   const isWorking = isWorkingControlled && !autoSettled;
   const doneText = doneLabel || (showTimer ? 'Thought for' : 'Done thinking');
   const hasTrace = steps.length > 0 || Boolean(children);
@@ -99,7 +104,14 @@ export const ThoughtLine: React.FC<ThoughtLineProps> = ({
   const stackRef = useRef<HTMLSpanElement | null>(null);
   const workRef = useRef<HTMLSpanElement | null>(null);
   const doneRef = useRef<HTMLSpanElement | null>(null);
-  const dsRef = useRef(0);
+
+  const initialDs =
+    elapsed != null
+      ? Math.max(0, Math.round(elapsed * 10))
+      : isWorking && startedAt
+      ? Math.max(0, Math.floor((Date.now() - startedAt) / 100))
+      : 0;
+  const dsRef = useRef(initialDs);
   const prevWorking = useRef(isWorking);
   const latest = useRef<{ onSettle?: (seconds: number) => void }>({});
   latest.current = { onSettle };
@@ -110,45 +122,68 @@ export const ThoughtLine: React.FC<ThoughtLineProps> = ({
   }, [isWorkingControlled]);
 
   useEffect(() => {
-    if (isWorking) setOpen(true);
-    else if (collapseOnSettle) setOpen(false);
-  }, [isWorking, collapseOnSettle]);
+    if (isWorking) {
+      setOpen(true);
+    } else if (collapseOnSettle && defaultOpen === undefined) {
+      setOpen(false);
+    }
+  }, [isWorking, collapseOnSettle, defaultOpen]);
 
   useEffect(() => {
     const glyphEl = glyphRef.current;
     const breathEl = breathRef.current;
     if (!breathEl) return undefined;
     const s = settleDuration / 1000;
-    const loop = (el: Element, delay: number) =>
-      animate(el, { opacity: [trough, 1, trough] }, { duration: period, ease: EASE_IN_OUT, repeat: Infinity, delay });
+    const running: Array<{ stop?: () => void }> = [];
     let cancelled = false;
-    const running: Array<{ stop: () => void }> = [];
+
+    const safeAnimate = (
+      el: Element,
+      keyframes: Record<string, unknown>,
+      options: Record<string, unknown>
+    ) => {
+      try {
+        const ctrl = animate(el, keyframes, options as Parameters<typeof animate>[2]);
+        running.push(ctrl);
+        return ctrl;
+      } catch {
+        return null;
+      }
+    };
+
+    const loop = (el: Element, delay: number) =>
+      safeAnimate(el, { opacity: [trough, 1, trough] }, { duration: period, ease: EASE_IN_OUT, repeat: Infinity, delay });
 
     if (isWorking) {
       if (depth > 0) {
-        if (sheen) running.push(animate(breathEl, { opacity: 1 }, { duration: 0.2, ease: EASE_OUT }));
+        if (sheen) safeAnimate(breathEl, { opacity: 1 }, { duration: 0.2, ease: EASE_OUT });
         if (glyphEl) {
-          const lead = animate(glyphEl, { opacity: trough }, { duration: 0.2, ease: EASE_OUT });
-          running.push(lead);
-          lead.then(() => {
-            if (cancelled) return;
-            running.push(loop(glyphEl, 0));
-            if (!sheen) running.push(loop(breathEl, 0.14));
-          });
+          const lead = safeAnimate(glyphEl, { opacity: trough }, { duration: 0.2, ease: EASE_OUT });
+          if (lead && typeof lead.then === 'function') {
+            lead.then(() => {
+              if (cancelled) return;
+              loop(glyphEl, 0);
+              if (!sheen) loop(breathEl, 0.14);
+            });
+          } else {
+            loop(glyphEl, 0);
+            if (!sheen) loop(breathEl, 0.14);
+          }
         } else if (!sheen) {
-          running.push(loop(breathEl, 0.14));
+          loop(breathEl, 0.14);
         }
       } else {
-        if (glyphEl) running.push(animate(glyphEl, { opacity: 1 }, { duration: 0.2, ease: EASE_OUT }));
-        running.push(animate(breathEl, { opacity: 1 }, { duration: 0.2, ease: EASE_OUT }));
+        if (glyphEl) safeAnimate(glyphEl, { opacity: 1 }, { duration: 0.2, ease: EASE_OUT });
+        safeAnimate(breathEl, { opacity: 1 }, { duration: 0.2, ease: EASE_OUT });
       }
     } else {
-      if (glyphEl) running.push(animate(glyphEl, { opacity: GLYPH_DONE }, { duration: s, ease: EASE_OUT }));
-      running.push(animate(breathEl, { opacity: 1 }, { duration: s, ease: EASE_OUT }));
+      if (glyphEl) safeAnimate(glyphEl, { opacity: GLYPH_DONE }, { duration: s, ease: EASE_OUT });
+      safeAnimate(breathEl, { opacity: 1 }, { duration: s, ease: EASE_OUT });
     }
+
     return () => {
       cancelled = true;
-      running.forEach(a => a.stop());
+      running.forEach((a) => a.stop?.());
     };
   }, [isWorking, period, depth, trough, settleDuration, glyph, sheen]);
 
@@ -159,19 +194,20 @@ export const ThoughtLine: React.FC<ThoughtLineProps> = ({
 
   useLayoutEffect(() => {
     if (elapsed != null) {
-      paint(Math.round(elapsed * 10));
+      paint(Math.max(0, Math.round(elapsed * 10)));
       return undefined;
     }
     if (!isWorking) return undefined;
-    const startedAt = performance.now();
-    paint(0);
+    const baseOffsetMs = startedAt ? Math.max(0, Date.now() - startedAt) : 0;
+    const runStart = performance.now() - baseOffsetMs;
+    paint(Math.floor(baseOffsetMs / 100));
     const id = setInterval(() => {
-      const ds = Math.floor((performance.now() - startedAt) / 100);
+      const ds = Math.floor((performance.now() - runStart) / 100);
       paint(ds);
       if (settleAfter > 0 && ds >= Math.round(settleAfter * 10)) setAutoSettled(true);
     }, 100);
     return () => clearInterval(id);
-  }, [isWorking, elapsed, settleAfter, durationText]);
+  }, [isWorking, elapsed, startedAt, settleAfter, durationText]);
 
   useLayoutEffect(() => {
     const t = timerRef.current;
@@ -190,6 +226,8 @@ export const ThoughtLine: React.FC<ThoughtLineProps> = ({
     };
     place(prevWorking.current !== isWorking);
     prevWorking.current = isWorking;
+
+    if (typeof ResizeObserver === 'undefined') return undefined;
     const ro = new ResizeObserver(() => place(false));
     if (workRef.current) ro.observe(workRef.current);
     if (doneRef.current) ro.observe(doneRef.current);
@@ -205,7 +243,7 @@ export const ThoughtLine: React.FC<ThoughtLineProps> = ({
     latest.current.onSettle?.(dsRef.current / 10);
   }, [isWorking, label, doneText, showTimer]);
 
-  const toggle = hasTrace && collapsible;
+  const initialTimerDisplay = durationText || fmt(initialDs);
   const head = (
     <>
       {glyph !== 'none' ? (
@@ -235,7 +273,7 @@ export const ThoughtLine: React.FC<ThoughtLineProps> = ({
       </span>
       {showTimer ? (
         <span ref={timerRef} className="thought-line__timer" data-done={isWorking ? undefined : ''} aria-hidden="true">
-          {durationText || '0.0s'}
+          {initialTimerDisplay}
         </span>
       ) : null}
       {collapsible && hasTrace ? (
@@ -265,20 +303,24 @@ export const ThoughtLine: React.FC<ThoughtLineProps> = ({
         ...style,
       } as React.CSSProperties}
     >
-      {collapsible && hasTrace ? (
-        <button
-          type="button"
-          className="thought-line__head"
-          data-toggle=""
-          aria-expanded={open}
-          tabIndex={0}
-          onClick={() => setOpen(v => !v)}
-        >
-          {head}
-        </button>
-      ) : (
-        <div className="thought-line__head">{head}</div>
-      )}
+      <div className="flex items-center justify-between gap-3 w-full min-w-0">
+        {collapsible && hasTrace ? (
+          <button
+            type="button"
+            className="thought-line__head min-w-0"
+            data-toggle=""
+            aria-expanded={open}
+            tabIndex={0}
+            onClick={() => setOpen((v) => !v)}
+          >
+            {head}
+          </button>
+        ) : (
+          <div className="thought-line__head min-w-0">{head}</div>
+        )}
+        {rightSlot ? <div className="shrink-0">{rightSlot}</div> : null}
+      </div>
+
       {hasTrace ? (
         <div className="thought-line__trace" data-open={open ? '' : undefined} aria-hidden={!open}>
           <div className="thought-line__fold">
@@ -301,11 +343,7 @@ export const ThoughtLine: React.FC<ThoughtLineProps> = ({
                 })}
               </div>
             ) : null}
-            {children ? (
-              <div className="thought-line__custom-fold">
-                {children}
-              </div>
-            ) : null}
+            {children ? <div className="thought-line__custom-fold">{children}</div> : null}
           </div>
         </div>
       ) : null}

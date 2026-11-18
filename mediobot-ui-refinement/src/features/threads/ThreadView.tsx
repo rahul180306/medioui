@@ -3,16 +3,33 @@ import { useApp } from '../../state/AppContext';
 import { ActivityItem } from '../activity/ActivityItem';
 import { Composer } from '../composer/Composer';
 import { MarkdownContent } from './MarkdownContent';
-import { Loader2, Image, Paperclip, Copy, Check, X, Users } from 'lucide-react';
+import {
+  Paperclip,
+  Copy,
+  Check,
+  X,
+  ChevronDown,
+  ChevronRight,
+  FileCode,
+  ExternalLink,
+  Square,
+  ArrowUpRight,
+} from 'lucide-react';
 import { EmptyState } from '../empty/EmptyState';
-import { TimelineNavigator } from './TimelineNavigator';
+import { TimelineNavigator, type TimelineAnchorMeta } from './TimelineNavigator';
 import { MediobotAvatar } from './MediobotAvatar';
 import { buildTimelineNavigatorAnchors, conversationActorName, projectThreadTimeline } from './timeline';
 import { getMediobotPresentation, getMediobotCursorColor, normalizeMediobotId } from '../mediobots/presentation';
-import type { ConversationActor, ThreadItem } from '../../types';
+import type { ConversationActor, FileDiff, ThreadItem, Turn } from '../../types';
 import LatticeLoader from '../../components/LatticeLoader';
+import CallChip from '../../components/CallChip';
+import ThoughtLine from '../../components/ThoughtLine';
 import { runtimeInstance } from '../../runtime/client';
-import { CodexToolCluster } from '../activity/CodexExecutionView';
+import { CodexToolCluster, deduplicateTools, parseToolAction, resolveModelDisplay } from '../activity/CodexExecutionView';
+import { mapActionToCallChip } from '../activity/subcomponents/CodexToolRow';
+import { extractAllowlistToolDetails } from '../activity/allowlistRedaction';
+import { SpecialistMicroGlyph } from '../activity/subcomponents/ExecutionGlyphs';
+import { ParallelModelGuidanceStrip } from './ParallelModelGuidanceStrip';
 
 function formatElapsedDuration(seconds: number): string {
   const total = Math.max(1, Math.round(seconds));
@@ -47,20 +64,245 @@ function useTurnTimer(isRunning: boolean, startedAt?: number, completedAt?: numb
   return elapsed;
 }
 
+interface TurnSummaryMetrics {
+  toolCount: number;
+  failedToolCount: number;
+  diffItems: Array<{ item: ThreadItem; diff: FileDiff; targetId?: string }>;
+  totalAdditions: number;
+  totalDeletions: number;
+}
+
+function summarizeTurnMetrics(turn: Turn, entries: ReadonlyArray<ReturnType<typeof projectThreadTimeline>[number]>): TurnSummaryMetrics {
+  let toolCount = 0;
+  let failedToolCount = 0;
+  const diffItems: Array<{ item: ThreadItem; diff: FileDiff; targetId?: string }> = [];
+  let totalAdditions = 0;
+  let totalDeletions = 0;
+
+  for (const entry of entries) {
+    for (const item of entry.items) {
+      if (item.type === 'tool_execution' && item.tool) {
+        toolCount++;
+        if (item.tool.status === 'failed') failedToolCount++;
+      }
+      if (item.type === 'diff' && item.diff) {
+        const adds = item.diff.truncated
+          ? item.diff.additions
+          : item.diff.hunks?.reduce((acc, h) => acc + h.lines.filter((l) => l.type === 'add').length, 0) ?? item.diff.additions;
+        const dels = item.diff.truncated
+          ? item.diff.deletions
+          : item.diff.hunks?.reduce((acc, h) => acc + h.lines.filter((l) => l.type === 'remove').length, 0) ?? item.diff.deletions;
+        totalAdditions += adds;
+        totalDeletions += dels;
+        diffItems.push({ item, diff: item.diff, targetId: entry.targetId });
+      }
+    }
+  }
+
+  return { toolCount, failedToolCount, diffItems, totalAdditions, totalDeletions };
+}
+
 const TurnDurationHeader: React.FC<{
   isRunning: boolean;
+  turnStatus: Turn['status'];
   createdAt: number;
   completedAt?: number;
   isLight: boolean;
-}> = ({ isRunning, createdAt, completedAt, isLight }) => {
+  metrics?: TurnSummaryMetrics;
+  activeTools?: ReadonlyArray<import('../../types').ToolExecutionData>;
+  onJumpToChanges?: () => void;
+  onStopTurn?: () => void;
+  onCopyTurn?: () => void;
+  copiedTurn?: boolean;
+}> = ({
+  isRunning,
+  turnStatus,
+  createdAt,
+  completedAt,
+  isLight,
+  metrics,
+  activeTools = [],
+  onJumpToChanges,
+  onStopTurn,
+  onCopyTurn,
+  copiedTurn,
+}) => {
   const durationText = useTurnTimer(isRunning, createdAt, completedAt);
+  const filesCount = metrics?.diffItems.length ?? 0;
+
+  const runningActions = activeTools.map((t, i) => parseToolAction(t, `hdr-${i}`));
+  const hasTerminalRunning = runningActions.some((a) => a.icon === 'terminal');
+  const hasSearchRunning = runningActions.some((a) => a.icon === 'search' || a.icon === 'web');
+  const hasEditRunning = runningActions.some((a) => a.icon === 'edit');
+  const hasReadRunning = runningActions.some((a) => a.icon === 'read' || a.icon === 'list');
+
+  const livePhaseLabel =
+    turnStatus === 'pause_requested'
+      ? 'Pausing at checkpoint…'
+      : hasTerminalRunning
+      ? runningActions.filter((a) => a.icon === 'terminal').length > 1
+        ? 'Running commands…'
+        : 'Running command…'
+      : hasEditRunning
+      ? 'Editing files…'
+      : hasSearchRunning
+      ? 'Searching codebase…'
+      : hasReadRunning
+      ? 'Reading files…'
+      : 'Thinking…';
+
+  const completedSeconds =
+    !isRunning && createdAt && completedAt
+      ? Math.max(0.1, (completedAt - createdAt) / 1000)
+      : undefined;
 
   return (
-    <div className={`text-[12px] font-sans ${isLight ? 'text-neutral-500' : 'text-neutral-400'} select-none pl-1 mb-2 font-normal tracking-tight`}>
-      {isRunning ? `Working for ${durationText}` : `Worked for ${durationText}`}
+    <div className="group/turnheader select-none mb-3">
+      <div
+        className={`flex items-center justify-between gap-3 text-[12.5px] font-sans pb-2 border-b ${
+          isLight
+            ? 'text-neutral-500 border-black/[0.07]'
+            : 'text-neutral-400 border-white/[0.07]'
+        } font-normal tracking-tight`}
+      >
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 min-w-0 tabular-nums">
+          <ThoughtLine
+            working={isRunning}
+            label={livePhaseLabel}
+            doneLabel="Worked for"
+            glyph={isRunning ? (runningActions.length > 0 ? 'dot' : 'sparkle') : 'none'}
+            collapsible={false}
+            startedAt={createdAt}
+            elapsed={completedSeconds}
+            showTimer={true}
+            durationText={!isRunning ? durationText : undefined}
+            fontSize={12.5}
+            breathPeriod={1.6}
+            breathDepth={0.45}
+            settleDuration={350}
+            settleBlur={2}
+            isLight={isLight}
+            color={isLight ? '#52525b' : '#a1a1aa'}
+            glyphColor={runningActions.length > 0 ? (isLight ? '#2563eb' : '#60a5fa') : (isLight ? '#3b82f6' : '#60a5fa')}
+          />
+
+          {metrics && metrics.toolCount > 0 && (
+            <span className={isLight ? 'text-neutral-400' : 'text-neutral-500'}>
+              · {metrics.toolCount} {metrics.toolCount === 1 ? 'tool' : 'tools'}
+            </span>
+          )}
+
+          {metrics && metrics.failedToolCount > 0 && (
+            <span className="text-rose-400">
+              · {metrics.failedToolCount} failed
+            </span>
+          )}
+
+          {filesCount > 0 && (
+            <button
+              type="button"
+              onClick={onJumpToChanges}
+              className={`inline-flex items-center gap-1 cursor-pointer transition-colors ${
+                isLight ? 'text-neutral-600 hover:text-sky-700' : 'text-neutral-300 hover:text-sky-300'
+              }`}
+              title="Jump to changed files in this turn"
+            >
+              <span>· {filesCount} {filesCount === 1 ? 'file' : 'files'}</span>
+              <span className={isLight ? 'text-emerald-700' : 'text-emerald-400/90'}>+{metrics!.totalAdditions}</span>
+              <span className={isLight ? 'text-rose-700' : 'text-rose-400/90'}>-{metrics!.totalDeletions}</span>
+            </button>
+          )}
+
+          {turnStatus === 'waiting_approval' && (
+            <span className={isLight ? 'text-amber-700' : 'text-amber-400/90'}>
+              · Waiting approval
+            </span>
+          )}
+          {turnStatus === 'failed' && (
+            <span className="text-rose-400">· Failed</span>
+          )}
+          {turnStatus === 'cancelled' && (
+            <span className={isLight ? 'text-neutral-400' : 'text-neutral-500'}>· Cancelled</span>
+          )}
+        </div>
+
+        <div className="flex items-center gap-1.5 shrink-0">
+          {isRunning && onStopTurn && (
+            <button
+              type="button"
+              onClick={onStopTurn}
+              className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-medium border whitespace-nowrap cursor-pointer transition-colors ${
+                isLight
+                  ? 'border-black/[0.1] text-neutral-700 hover:bg-black/[0.04]'
+                  : 'border-white/[0.1] text-neutral-300 hover:bg-white/[0.06]'
+              }`}
+              title="Stop active run"
+            >
+              <Square className="w-2.5 h-2.5 fill-current" />
+              <span>Stop</span>
+            </button>
+          )}
+
+          {!isRunning && onCopyTurn && (
+            <button
+              type="button"
+              onClick={onCopyTurn}
+              className={`opacity-0 group-hover/turnheader:opacity-100 focus-visible:opacity-100 inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] cursor-pointer transition-opacity ${
+                isLight ? 'text-neutral-500 hover:text-neutral-900 hover:bg-black/[0.04]' : 'text-neutral-400 hover:text-neutral-100 hover:bg-white/[0.06]'
+              }`}
+              title="Copy full turn summary"
+            >
+              {copiedTurn ? (
+                <>
+                  <Check className="w-3 h-3 text-emerald-500" />
+                  <span className="text-emerald-500">Copied</span>
+                </>
+              ) : (
+                <>
+                  <Copy className="w-3 h-3" />
+                  <span>Copy</span>
+                </>
+              )}
+            </button>
+          )}
+        </div>
+      </div>
     </div>
   );
 };
+
+function formatTemporalDivider(ts?: number): string {
+  if (!ts) return '';
+  const date = new Date(ts);
+  if (isNaN(date.getTime())) return '';
+  const now = new Date();
+  const hours = date.getHours().toString().padStart(2, '0');
+  const minutes = date.getMinutes().toString().padStart(2, '0');
+
+  const isSameDay =
+    date.getFullYear() === now.getFullYear() &&
+    date.getMonth() === now.getMonth() &&
+    date.getDate() === now.getDate();
+
+  if (isSameDay) {
+    return `Today ${hours}:${minutes}`;
+  }
+
+  const yesterday = new Date(now);
+  yesterday.setDate(now.getDate() - 1);
+  const isYesterday =
+    date.getFullYear() === yesterday.getFullYear() &&
+    date.getMonth() === yesterday.getMonth() &&
+    date.getDate() === yesterday.getDate();
+
+  if (isYesterday) {
+    return `Yesterday ${hours}:${minutes}`;
+  }
+
+  const day = date.getDate();
+  const month = date.toLocaleDateString('en-US', { month: 'short' });
+  return `${day} ${month} ${hours}:${minutes}`;
+}
 
 function formatUserTimestamp(ts?: number): string {
   if (!ts) return '';
@@ -73,43 +315,188 @@ function formatUserTimestamp(ts?: number): string {
   return `${day} ${month}, ${hours}:${minutes}`;
 }
 
-function targetId(turnId: string, itemId: string): string {
-  return `timeline-${encodeURIComponent(turnId)}-${encodeURIComponent(itemId)}`;
+interface SpecialistTurnSummary {
+  id: string;
+  name: string;
+  role?: string;
+  toolCount: number;
+  failedCount: number;
+  totalDurationMs: number;
+  firstTargetId?: string;
+  hasRunning: boolean;
 }
 
-function activityGroupLabel(items: ReadonlyArray<ThreadItem>): string {
-  const kinds = new Set(items.map((item) => item.type));
-  if (kinds.size === 1 && kinds.has('tool_execution')) return 'Tool activity';
-  if (kinds.size === 1 && kinds.has('diff')) return 'File changes';
-  if (kinds.size === 1 && kinds.has('approval_request')) return 'Approval';
-  if (kinds.size === 1 && (kinds.has('computer_action') || kinds.has('perception_snapshot'))) return 'Computer activity';
-  return 'Activity';
-}
-
-function activeActivityLabel(items: ReadonlyArray<ThreadItem>): string {
-  const latest = items[items.length - 1];
-  if (!latest) return 'Working…';
-  if (latest.type === 'tool_execution' && latest.tool) {
-    const cmd = latest.tool.command || latest.tool.toolName;
-    if (cmd.startsWith('filesystem.read')) {
-      const path = cmd.replace('filesystem.read', '').trim();
-      return path ? `Reading ${path}` : 'Reading file…';
+function collectTurnSpecialists(
+  items: ReadonlyArray<ThreadItem>,
+  entries?: ReadonlyArray<ReturnType<typeof projectThreadTimeline>[number]>
+): SpecialistTurnSummary[] {
+  const byId = new Map<string, SpecialistTurnSummary>();
+  const firstEntryTargetByActor = new Map<string, string>();
+  if (entries) {
+    for (const entry of entries) {
+      if (entry.actor?.type === 'mediobot') {
+        const nid = normalizeMediobotId(entry.actor.presentationId ?? entry.actor.mediobotId ?? entry.actor.name);
+        if (nid && !firstEntryTargetByActor.has(nid)) {
+          firstEntryTargetByActor.set(nid, entry.targetId);
+        }
+      }
     }
-    if (cmd.startsWith('filesystem.write')) {
-      const path = cmd.replace('filesystem.write', '').trim();
-      return path ? `Writing ${path}` : 'Writing file…';
-    }
-    if (cmd.startsWith('terminal.execute')) {
-      const execCmd = cmd.replace('terminal.execute', '').trim();
-      return execCmd ? `Running ${execCmd.slice(0, 32)}…` : 'Running command…';
-    }
-    return cmd.length > 40 ? `${cmd.slice(0, 37)}…` : `${cmd}…`;
   }
-  if (latest.type === 'diff') return 'Writing file changes…';
-  if (latest.activityLabel) return `${latest.activityLabel}…`;
-  if (latest.text) return `${latest.text.slice(0, 36)}…`;
-  return 'Working…';
+
+  for (const item of items) {
+    if (item.actor?.type === 'mediobot') {
+      const normalized = normalizeMediobotId(item.actor.presentationId ?? item.actor.mediobotId ?? item.actor.name);
+      if (normalized && normalized !== 'maestro') {
+        const existing = byId.get(normalized) ?? {
+          id: normalized,
+          name: item.actor.name || normalized.charAt(0).toUpperCase() + normalized.slice(1),
+          role: item.actor.role,
+          toolCount: 0,
+          failedCount: 0,
+          totalDurationMs: 0,
+          firstTargetId: firstEntryTargetByActor.get(normalized),
+          hasRunning: false,
+        };
+        if (item.type === 'tool_execution' && item.tool) {
+          existing.toolCount++;
+          if (item.tool.status === 'failed') existing.failedCount++;
+          if (item.tool.status === 'running') existing.hasRunning = true;
+          if (typeof item.tool.durationMs === 'number') {
+            existing.totalDurationMs += item.tool.durationMs;
+          }
+        }
+        if (!existing.role && item.actor.role) existing.role = item.actor.role;
+        byId.set(normalized, existing);
+      }
+    }
+  }
+  return Array.from(byId.values());
 }
+
+function actorIdentityKey(actor?: ConversationActor): string {
+  if (!actor) return 'mediobot:maestro';
+  if (actor.type === 'system') return 'system';
+  if (actor.type === 'user') return 'user';
+  const norm = normalizeMediobotId(actor.presentationId ?? actor.mediobotId ?? actor.name);
+  return `mediobot:${norm || actor.name || 'maestro'}`;
+}
+
+const TurnSpecialistMilestone: React.FC<{
+  specialists: SpecialistTurnSummary[];
+  isLight: boolean;
+  getAgentPreference: (id: string) => { modelKey: string; effort: string };
+  onJumpToTarget: (targetId: string) => void;
+}> = ({ specialists, isLight, getAgentPreference, onJumpToTarget }) => {
+  const [isOpen, setIsOpen] = useState(false);
+
+  return (
+    <div className="my-1.5 select-none">
+      <button
+        type="button"
+        onClick={() => setIsOpen((p) => !p)}
+        aria-expanded={isOpen}
+        className={`group/spec flex flex-wrap items-center gap-1.5 py-0.5 px-1.5 -mx-1.5 rounded-md text-[13px] cursor-pointer transition-colors ${
+          isLight ? 'hover:bg-black/[0.03]' : 'hover:bg-white/[0.03]'
+        }`}
+      >
+        <span className="inline-flex items-center gap-1 shrink-0 mr-0.5">
+          {specialists.map((spec) => (
+            <SpecialistMicroGlyph
+              key={`turn-spec-${spec.id}`}
+              specialistId={spec.id}
+              isLight={isLight}
+              working={spec.hasRunning}
+              className="w-3.5 h-3.5"
+            />
+          ))}
+        </span>
+        <span className={isLight ? 'text-neutral-700' : 'text-neutral-300'}>
+          {specialists.map((spec, idx) => {
+            const isSecondLast = idx === specialists.length - 2;
+            const isLast = idx === specialists.length - 1;
+            return (
+              <React.Fragment key={spec.id}>
+                <span className="font-medium">{spec.name}</span>
+                {!isLast && (
+                  <span className={isLight ? 'text-neutral-500' : 'text-neutral-400'}>
+                    {isSecondLast ? ' and ' : ', '}
+                  </span>
+                )}
+              </React.Fragment>
+            );
+          })}{' '}
+          <span className={isLight ? 'text-neutral-500' : 'text-neutral-400'}>
+            started working
+          </span>
+        </span>
+        {isOpen ? (
+          <ChevronDown className={`w-3.5 h-3.5 shrink-0 ${isLight ? 'text-neutral-400' : 'text-neutral-500'}`} />
+        ) : (
+          <ChevronRight className={`w-3.5 h-3.5 opacity-0 group-hover/spec:opacity-65 transition-opacity shrink-0 ${isLight ? 'text-neutral-400' : 'text-neutral-500'}`} />
+        )}
+      </button>
+
+      {isOpen && (
+        <div
+          className={`mt-1.5 ml-5 rounded-lg border divide-y text-[12px] ${
+            isLight
+              ? 'border-black/[0.07] bg-[#fafafa] divide-black/[0.05] text-neutral-700'
+              : 'border-white/[0.07] bg-white/[0.02] divide-white/[0.05] text-neutral-300'
+          }`}
+        >
+          {specialists.map((spec) => {
+            const pref = getAgentPreference(spec.id);
+            const modelName = resolveModelDisplay(pref.modelKey) || pref.modelKey;
+            const durText =
+              spec.totalDurationMs > 0
+                ? spec.totalDurationMs >= 1000
+                  ? `${(spec.totalDurationMs / 1000).toFixed(1)}s`
+                  : `${spec.totalDurationMs}ms`
+                : null;
+            return (
+              <div key={spec.id} className="flex items-center justify-between gap-3 px-3 py-1.5">
+                <div className="flex items-center gap-2 min-w-0">
+                  <SpecialistMicroGlyph specialistId={spec.id} isLight={isLight} working={spec.hasRunning} className="w-3.5 h-3.5" />
+                  <span className={`font-medium shrink-0 ${isLight ? 'text-neutral-900' : 'text-neutral-100'}`}>
+                    {spec.name}
+                  </span>
+                  {spec.role && (
+                    <span className={`truncate text-[11px] ${isLight ? 'text-neutral-500' : 'text-neutral-400'}`}>
+                      {spec.role}
+                    </span>
+                  )}
+                </div>
+
+                <div className={`flex items-center gap-2.5 shrink-0 text-[11px] tabular-nums ${isLight ? 'text-neutral-500' : 'text-neutral-400'}`}>
+                  {modelName && <span className="hidden sm:inline">{modelName}</span>}
+                  {spec.toolCount > 0 && (
+                    <span>{spec.toolCount} {spec.toolCount === 1 ? 'step' : 'steps'}</span>
+                  )}
+                  {spec.failedCount > 0 && (
+                    <span className="text-rose-400">{spec.failedCount} failed</span>
+                  )}
+                  {durText && <span className="font-mono">{durText}</span>}
+                  {spec.firstTargetId && (
+                    <button
+                      type="button"
+                      onClick={() => onJumpToTarget(spec.firstTargetId!)}
+                      className={`inline-flex items-center gap-0.5 cursor-pointer transition-colors ${
+                        isLight ? 'text-sky-700 hover:underline' : 'text-sky-400 hover:underline'
+                      }`}
+                    >
+                      <span>Jump</span>
+                      <ArrowUpRight className="w-3 h-3" />
+                    </button>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+};
 
 export const ThreadView: React.FC = () => {
   const {
@@ -121,7 +508,9 @@ export const ThreadView: React.FC = () => {
     selectedMediobotId,
     persistenceError,
     clearPersistenceError,
-    openChatTab,
+    cancelTurn,
+    openFileTab,
+    getAgentPreference,
   } = useApp();
   const isLight = theme === 'light';
 
@@ -187,6 +576,33 @@ export const ThreadView: React.FC = () => {
     return byTurn;
   }, [timeline]);
   const anchors = useMemo(() => buildTimelineNavigatorAnchors(timeline), [timeline]);
+  const turnMetaByTargetId = useMemo(() => {
+    const map = new Map<string, TimelineAnchorMeta>();
+    for (const turn of uniqueTurns) {
+      const turnEntries = entriesByTurn.get(turn.id) ?? [];
+      const userEntry = turnEntries.find((e) => e.kind === 'user');
+      if (!userEntry) continue;
+      const metrics = summarizeTurnMetrics(turn, turnEntries);
+      const durationLabel =
+        turn.completedAt && turn.createdAt
+          ? formatElapsedDuration((turn.completedAt - turn.createdAt) / 1000)
+          : undefined;
+      map.set(userEntry.targetId, {
+        durationLabel,
+        filesCount: metrics.diffItems.length,
+        stepsCount: metrics.toolCount,
+        status: turn.status,
+      });
+    }
+    return map;
+  }, [uniqueTurns, entriesByTurn]);
+
+  const scrollToTargetId = useCallback((id: string) => {
+    const el = targetElements.current.get(id) ?? document.getElementById(id);
+    if (!el) return;
+    const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    el.scrollIntoView({ behavior: reducedMotion ? 'auto' : 'smooth', block: 'start' });
+  }, []);
 
   useLayoutEffect(() => {
     if (!scrollRoot || !activeThread || restoredThreadId.current === activeThread.id) return;
@@ -248,13 +664,6 @@ export const ThreadView: React.FC = () => {
     if (element) targetElements.current.set(id, element);
     else targetElements.current.delete(id);
   };
-  const bindActivityTarget = (id: string, initiallyOpen: boolean) => (element: HTMLDetailsElement | null) => {
-    bindTarget(id)(element);
-    if (element && element.dataset.initialized !== 'true') {
-      element.open = initiallyOpen;
-      element.dataset.initialized = 'true';
-    }
-  };
 
   return (
     <div className="flex-1 flex flex-col h-full overflow-hidden relative">
@@ -265,473 +674,639 @@ export const ThreadView: React.FC = () => {
           try { sessionStorage.setItem(`mediobot-thread-scroll:${activeThread.id}`, String(element.scrollTop)); }
           catch { /* Session storage may be unavailable in private browsing. */ }
         }
-      }} data-testid="thread-scroll-root" className="flex-1 overflow-y-auto px-4 py-6 md:px-8 max-w-3xl w-full mx-auto space-y-8">
+      }} data-testid="thread-scroll-root" className="flex-1 overflow-y-auto px-4 py-6 md:px-8 max-w-3xl w-full mx-auto space-y-7">
         {persistenceError && (
           <div
             data-testid="persistence-error-banner"
-            className="p-3 rounded-xl border border-rose-300 bg-rose-50 text-rose-900 dark:bg-rose-950/40 dark:border-rose-800 dark:text-rose-200 flex items-center justify-between text-xs mb-4 shadow-xs select-none"
+            className={`px-3.5 py-2.5 rounded-xl border text-xs flex items-center justify-between gap-3 select-none ${
+              isLight
+                ? 'border-rose-200 bg-rose-50/70 text-rose-900'
+                : 'border-rose-900/50 bg-rose-950/30 text-rose-200'
+            }`}
           >
-            <div className="flex items-center gap-2">
-              <span className="font-semibold">Persistence Error:</span>
-              <span>{persistenceError}</span>
+            <div className="flex items-center gap-2 min-w-0">
+              <span className="font-medium shrink-0">Persistence error:</span>
+              <span className="truncate">{persistenceError}</span>
             </div>
             <button
               type="button"
               onClick={clearPersistenceError}
-              className="text-rose-700 dark:text-rose-300 hover:underline px-2 py-0.5 rounded cursor-pointer font-medium"
+              className={`shrink-0 px-2 py-0.5 rounded-md font-medium cursor-pointer transition-colors ${
+                isLight ? 'text-rose-700 hover:bg-rose-100' : 'text-rose-300 hover:bg-white/[0.06]'
+              }`}
             >
               Dismiss
             </button>
           </div>
         )}
-        {isSpecificMediobotChat && cleanSpecId && (
-          <div data-testid={`specialist-chat-banner-${cleanSpecId}`} className={`p-3.5 rounded-2xl border flex items-center justify-between select-none shadow-2xs mb-4 ${
-            isLight
-              ? 'bg-[#f8f9fa] border-[#e2e4e8] text-[#18181b]'
-              : 'bg-[#18181d] border-[#292832] text-neutral-200'
-          }`}>
-            <div className="flex items-center gap-3">
-              <MediobotAvatar actor={{ type: 'mediobot', mediobotId: cleanSpecId }} size="sm" />
-              <div className="flex flex-col">
-                <div className="flex items-center gap-2">
-                  <span className={`text-xs font-semibold ${
-                    (() => {
-                      const p = getMediobotPresentation(cleanSpecId);
-                      return isLight ? p.lightText : p.darkText;
-                    })()
-                  }`}>
-                    {getMediobotPresentation(cleanSpecId).displayName}
-                  </span>
-                  <span className={`text-[10px] px-1.5 py-0.5 rounded font-mono ${isLight ? 'bg-black/5 text-neutral-600' : 'bg-white/10 text-neutral-400'}`}>
-                    {cleanSpecId === 'maestro' ? 'Team Leader · Direct Chat' : 'Specialist Direct Chat'}
-                  </span>
-                </div>
-                <span className={`text-[11px] ${isLight ? 'text-neutral-500' : 'text-neutral-400'}`}>
-                  {getMediobotPresentation(cleanSpecId).specialization}
-                </span>
-              </div>
-            </div>
-          </div>
-        )}
-        {activeThread?.originatingMainThreadId && (
-          <div
-            data-testid="originating-main-pill"
-            className={`px-3 py-2 rounded-xl border flex items-center justify-between text-[11px] font-sans mb-4 select-none ${
-              isLight
-                ? 'bg-blue-50/70 border-blue-200 text-blue-900'
-                : 'bg-blue-950/30 border-blue-800/40 text-blue-200'
-            }`}
-          >
-            <div className="flex items-center gap-2">
-              <span className="font-semibold">Associated with Main Chat:</span>
-              <span className="font-mono text-[10.5px] opacity-80">{activeThread.originatingMainThreadId}</span>
-            </div>
-            <button
-              type="button"
-              onClick={() => openChatTab(activeThread.originatingMainThreadId!)}
-              className={`px-2.5 py-1 rounded-md text-[11px] font-medium transition-colors cursor-pointer ${
-                isLight ? 'bg-blue-100 hover:bg-blue-200 text-blue-950' : 'bg-blue-900/50 hover:bg-blue-900 text-blue-100'
-              }`}
-            >
-              ← Back to Main Chat
-            </button>
-          </div>
-        )}
-        {isMainChat && activeThread?.associatedMaestroThreadId && (
-          <div
-            data-testid="associated-maestro-pill"
-            className={`px-3 py-2 rounded-xl border flex items-center justify-between text-[11px] font-sans mb-4 select-none ${
-              isLight
-                ? 'bg-purple-50/70 border-purple-200 text-purple-900'
-                : 'bg-purple-950/30 border-purple-800/40 text-purple-200'
-            }`}
-          >
-            <div className="flex items-center gap-2">
-              <span className="font-semibold">Linked Maestro Orchestrator:</span>
-              <span className="font-mono text-[10.5px] opacity-80">{activeThread.associatedMaestroThreadId}</span>
-            </div>
-            <button
-              type="button"
-              onClick={() => openChatTab(activeThread.associatedMaestroThreadId!)}
-              className={`px-2.5 py-1 rounded-md text-[11px] font-medium transition-colors cursor-pointer ${
-                isLight ? 'bg-purple-100 hover:bg-purple-200 text-purple-950' : 'bg-purple-900/50 hover:bg-purple-900 text-purple-100'
-              }`}
-            >
-              Open Maestro View →
-            </button>
-          </div>
-        )}
-        {isMainChat && (
-          <div data-testid="main-team-room-banner" className={`p-3 rounded-2xl border flex items-center justify-between select-none shadow-2xs mb-4 ${
-            isLight
-              ? 'bg-[#f4f6fb] border-[#d8e0f0] text-[#1e293b]'
-              : 'bg-[#151922] border-[#222e44] text-neutral-200'
-          }`}>
-            <div className="flex items-center gap-3">
-              <div className="w-8 h-8 rounded-full bg-blue-500/20 text-blue-500 flex items-center justify-center shrink-0">
-                <Users className="w-4 h-4" />
-              </div>
-              <div className="flex flex-col">
-                <div className="flex items-center gap-2">
-                  <span className="text-xs font-semibold">
-                    Main Team · Shared Meeting Room
-                  </span>
-                  <span className={`text-[10px] px-1.5 py-0.5 rounded font-mono ${isLight ? 'bg-blue-100 text-blue-700' : 'bg-blue-950 text-blue-300 border border-blue-800/40'}`}>
-                    Multi-Participant
-                  </span>
-                </div>
-                <span className={`text-[11px] ${isLight ? 'text-neutral-500' : 'text-neutral-400'}`}>
-                  Shared collaboration space for User, Maestro, and recruited specialists
-                </span>
-              </div>
-            </div>
-            {activeThread?.assignedSpecialists && activeThread.assignedSpecialists.length > 0 && (
-              <div className="flex items-center -space-x-1 pl-2">
-                <MediobotAvatar actor={{ type: 'mediobot', mediobotId: 'maestro' }} size="xs" />
-                {activeThread.assignedSpecialists.map((id) => (
-                  <MediobotAvatar key={id} actor={{ type: 'mediobot', mediobotId: id }} size="xs" />
-                ))}
-              </div>
-            )}
-          </div>
-        )}
         {uniqueTurns.map((turn, turnIdx) => {
           const entries = entriesByTurn.get(turn.id) ?? [];
           const isTurnRunning = turn.status === 'running' || turn.status === 'pause_requested';
-          return <div key={`${turn.id}-${turnIdx}`} className="space-y-4">
-            {turn.taskId && turn.status === 'running' && runtimeInstance.pauseTask && (
-              <div className="flex justify-end">
-                <button type="button" disabled={pausingTaskId === turn.taskId}
-                  onClick={async () => {
-                    setRecoveryError(null); setPausingTaskId(turn.taskId!);
-                    try { await runtimeInstance.pauseTask!(turn.taskId!); }
-                    catch (error) { setRecoveryError(error instanceof Error ? error.message : 'Could not pause this task.'); }
-                    finally { setPausingTaskId(null); }
-                  }}
-                  className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors disabled:opacity-60 ${isLight ? 'border border-gray-300 hover:bg-gray-100 text-gray-700' : 'border border-white/10 hover:bg-white/5 text-gray-300'}`}>
-                  {pausingTaskId === turn.taskId ? 'Requesting pause…' : 'Pause task'}
-                </button>
-              </div>
-            )}
-            {turn.status === 'pause_requested' && <div className="text-xs text-gray-500" role="status">Pause requested. Active work is settling at a safe checkpoint.</div>}
-            {turn.recoveryState && turn.taskId && (
-              <div className={`flex flex-wrap items-center justify-between gap-3 rounded-lg px-3 py-2 text-xs ${isLight ? 'bg-amber-50 text-amber-900 border border-amber-200' : 'bg-amber-950/30 text-amber-200 border border-amber-900/60'}`} role="status">
-                <span>{turn.recoveryState === 'paused'
-                  ? 'This task is paused at a saved checkpoint.'
-                  : turn.recoveryState === 'interrupted'
-                  ? 'This task was interrupted. Its saved execution can be resumed.'
-                  : 'This task is queued and ready to start.'}</span>
-                <button
-                  type="button"
-                  disabled={resumingTaskId === turn.taskId}
-                  onClick={async () => {
-                    setRecoveryError(null);
-                    setResumingTaskId(turn.taskId!);
-                    try {
-                      if (!runtimeInstance.resumeTask) throw new Error('Task recovery is not available in this runtime.');
-                      await runtimeInstance.resumeTask(turn.taskId!, activeThread.id, turn.id);
-                    } catch (error) {
-                      setRecoveryError(error instanceof Error ? error.message : 'Could not resume this task.');
-                    } finally {
-                      setResumingTaskId(null);
-                    }
-                  }}
-                  className={`rounded-md px-2.5 py-1 font-medium transition-colors disabled:cursor-wait disabled:opacity-60 ${isLight ? 'bg-amber-100 hover:bg-amber-200 text-amber-950' : 'bg-amber-900/50 hover:bg-amber-900 text-amber-100'}`}
-                >
-                  {resumingTaskId === turn.taskId ? 'Resuming…' : 'Resume task'}
-                </button>
-                {recoveryError && <span className="basis-full text-rose-500">{recoveryError}</span>}
-              </div>
-            )}
-            {entries.map((entry, entryIndex) => {
-              const first = entry.items[0]!;
-              const isFirstAssistantEntry = entry.kind !== 'user' && (entryIndex === 0 || entries[entryIndex - 1]?.kind === 'user');
+          const turnSpecialists = collectTurnSpecialists(turn.items ?? [], entries);
+          const turnMetrics = summarizeTurnMetrics(turn, entries);
+          const turnOverallText = entries
+            .filter((e) => e.kind === 'message')
+            .map((e) => e.items[0]?.text || '')
+            .filter((t) => Boolean(t.trim()) && !t.startsWith('Using Gemini'))
+            .join('\n\n');
+          const showTurnParallelMilestone = !isTurnRunning && turnSpecialists.length >= 2;
+          let renderedParallelMilestone = false;
+          let lastSpeakerKey: string | null = null;
 
-              if (entry.kind === 'user') {
-                const itemTimestamp = first.timestamp || turn.createdAt;
-                const displayTime = formatUserTimestamp(itemTimestamp);
+          const temporalLabel = formatTemporalDivider(turn.createdAt);
+          const prevTemporalLabel = turnIdx > 0 ? formatTemporalDivider(uniqueTurns[turnIdx - 1]?.createdAt) : '';
+          const shouldShowTemporalDivider = Boolean(temporalLabel) && (turnIdx === 0 || temporalLabel !== prevTemporalLabel);
+          const hasAssistantEntries = entries.some((e) => e.kind !== 'user');
+          const activeRunningTools = isTurnRunning
+            ? deduplicateTools(
+                (turn.items ?? [])
+                  .filter((it) => it.type === 'tool_execution' && it.tool?.status === 'running')
+                  .map((it) => it.tool!)
+              )
+            : [];
 
-                return (
-                  <div
-                    key={entry.id}
-                    id={entry.targetId}
-                    ref={bindTarget(entry.targetId)}
-                    data-timeline-anchor="user"
-                    className="group flex flex-col items-end scroll-mt-24 scroll-mb-24"
+          return (
+            <div key={`${turn.id}-${turnIdx}`} className="space-y-3.5">
+              {shouldShowTemporalDivider && (
+                <div className="flex justify-center py-0.5 select-none">
+                  <span
+                    className={`text-[11.5px] font-sans tabular-nums ${
+                      isLight ? 'text-neutral-400' : 'text-neutral-500'
+                    }`}
                   >
+                    {temporalLabel}
+                  </span>
+                </div>
+              )}
+
+              {turn.taskId && turn.status === 'running' && runtimeInstance.pauseTask && (
+                <div className="flex justify-end">
+                  <button type="button" disabled={pausingTaskId === turn.taskId}
+                    onClick={async () => {
+                      setRecoveryError(null); setPausingTaskId(turn.taskId!);
+                      try { await runtimeInstance.pauseTask!(turn.taskId!); }
+                      catch (error) { setRecoveryError(error instanceof Error ? error.message : 'Could not pause this task.'); }
+                      finally { setPausingTaskId(null); }
+                    }}
+                    className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors disabled:opacity-60 ${isLight ? 'border border-gray-300 hover:bg-gray-100 text-gray-700' : 'border border-white/10 hover:bg-white/5 text-gray-300'}`}>
+                    {pausingTaskId === turn.taskId ? 'Requesting pause…' : 'Pause task'}
+                  </button>
+                </div>
+              )}
+
+              {turn.status === 'pause_requested' && (
+                <div className="text-xs text-neutral-500" role="status">
+                  Pause requested. Active work is settling at a safe checkpoint.
+                </div>
+              )}
+
+              {turn.recoveryState && turn.taskId && (
+                <div className={`flex flex-wrap items-center justify-between gap-3 rounded-lg px-3 py-2 text-xs ${isLight ? 'bg-amber-50 text-amber-900 border border-amber-200' : 'bg-amber-950/30 text-amber-200 border border-amber-900/60'}`} role="status">
+                  <span>{turn.recoveryState === 'paused'
+                    ? 'This task is paused at a saved checkpoint.'
+                    : turn.recoveryState === 'interrupted'
+                    ? 'This task was interrupted. Its saved execution can be resumed.'
+                    : 'This task is queued and ready to start.'}</span>
+                  <button
+                    type="button"
+                    disabled={resumingTaskId === turn.taskId}
+                    onClick={async () => {
+                      setRecoveryError(null);
+                      setResumingTaskId(turn.taskId!);
+                      try {
+                        if (!runtimeInstance.resumeTask) throw new Error('Task recovery is not available in this runtime.');
+                        await runtimeInstance.resumeTask(turn.taskId!, activeThread.id, turn.id);
+                      } catch (error) {
+                        setRecoveryError(error instanceof Error ? error.message : 'Could not resume this task.');
+                      } finally {
+                        setResumingTaskId(null);
+                      }
+                    }}
+                    className={`rounded-md px-2.5 py-1 font-medium transition-colors disabled:cursor-wait disabled:opacity-60 ${isLight ? 'bg-amber-100 hover:bg-amber-200 text-amber-950' : 'bg-amber-900/50 hover:bg-amber-900 text-amber-100'}`}
+                  >
+                    {resumingTaskId === turn.taskId ? 'Resuming…' : 'Resume task'}
+                  </button>
+                  {recoveryError && <span className="basis-full text-rose-500">{recoveryError}</span>}
+                </div>
+              )}
+
+              {entries.map((entry, entryIndex) => {
+                const first = entry.items[0]!;
+                const isFirstAssistantEntry = entry.kind !== 'user' && (entryIndex === 0 || entries[entryIndex - 1]?.kind === 'user');
+
+                if (entry.kind === 'user') {
+                  lastSpeakerKey = null;
+                  const itemTimestamp = first.timestamp || turn.createdAt;
+                  const displayTime = formatUserTimestamp(itemTimestamp);
+
+                  return (
                     <div
-                      className={`max-w-[85%] ${
-                        isLight
-                          ? 'bg-[#f4f4f7] text-[#09090b] border-[#e2e4e8] shadow-xs'
-                          : 'bg-[#242429] text-neutral-100 border-[#2f2f37]'
-                      } text-sm px-4 py-2.5 rounded-2xl rounded-tr-sm border leading-relaxed select-text`}
+                      key={entry.id}
+                      id={entry.targetId}
+                      ref={bindTarget(entry.targetId)}
+                      data-timeline-anchor="user"
+                      className="group flex flex-col items-end scroll-mt-24 scroll-mb-24"
                     >
-                      {first.text}
-                      {first.attachments?.length ? (
-                        <div className="mt-2.5 flex flex-col gap-2">
-                          {/* Image preview cards with preserved aspect ratio */}
-                          {first.attachments.filter((a) => a.mimeType.startsWith('image/')).length > 0 && (
-                            <div className="flex flex-wrap gap-2">
-                              {first.attachments
-                                .filter((a) => a.mimeType.startsWith('image/'))
-                                .map((attachment) => (
-                                  <div
-                                    key={attachment.id}
-                                    className={`group/img relative rounded-xl overflow-hidden border ${
-                                      isLight ? 'border-black/10 bg-black/5' : 'border-white/10 bg-black/40'
-                                    } shadow-xs cursor-pointer transition-transform hover:scale-[1.02]`}
-                                    onClick={() => setViewingImage({ id: attachment.id, name: attachment.name, url: `/api/attachments/${attachment.id}` })}
-                                  >
-                                    <img
-                                      src={`/api/attachments/${attachment.id}`}
-                                      alt={attachment.name}
-                                      loading="lazy"
-                                      className="max-h-[180px] max-w-[260px] object-contain rounded-xl block"
-                                    />
-                                    <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent px-2 py-1 opacity-0 group-hover/img:opacity-100 transition-opacity">
-                                      <p className="text-[10px] text-white truncate font-medium">{attachment.name}</p>
+                      <div
+                        className={`max-w-[85%] ${
+                          isLight
+                            ? 'bg-[#f4f4f7] text-[#09090b] border-black/[0.07]'
+                            : 'bg-[#232328] text-neutral-100 border-white/[0.07]'
+                        } text-[13.5px] px-4 py-2 rounded-2xl border leading-relaxed select-text`}
+                      >
+                        {first.text}
+                        {first.attachments?.length ? (
+                          <div className="mt-2.5 flex flex-col gap-2">
+                            {first.attachments.filter((a) => a.mimeType.startsWith('image/')).length > 0 && (
+                              <div className="flex flex-wrap gap-2">
+                                {first.attachments
+                                  .filter((a) => a.mimeType.startsWith('image/'))
+                                  .map((attachment) => (
+                                    <div
+                                      key={attachment.id}
+                                      className={`group/img relative rounded-xl overflow-hidden border ${
+                                        isLight ? 'border-black/10 bg-black/5' : 'border-white/10 bg-black/40'
+                                      } cursor-pointer transition-transform hover:scale-[1.02]`}
+                                      onClick={() => setViewingImage({ id: attachment.id, name: attachment.name, url: `/api/attachments/${attachment.id}` })}
+                                    >
+                                      <img
+                                        src={`/api/attachments/${attachment.id}`}
+                                        alt={attachment.name}
+                                        loading="lazy"
+                                        className="max-h-[180px] max-w-[260px] object-contain rounded-xl block"
+                                      />
+                                      <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent px-2 py-1 opacity-0 group-hover/img:opacity-100 transition-opacity">
+                                        <p className="text-[10px] text-white truncate font-medium">{attachment.name}</p>
+                                      </div>
                                     </div>
-                                  </div>
-                                ))}
+                                  ))}
+                              </div>
+                            )}
+
+                            {first.attachments.filter((a) => !a.mimeType.startsWith('image/')).length > 0 && (
+                              <div className="flex flex-wrap gap-1.5">
+                                {first.attachments
+                                  .filter((a) => !a.mimeType.startsWith('image/'))
+                                  .map((attachment) => (
+                                    <span
+                                      key={attachment.id}
+                                      className={`inline-flex items-center gap-1.5 rounded-lg ${
+                                        isLight
+                                          ? 'bg-white border-black/[0.08] text-neutral-700'
+                                          : 'bg-[#19191d] border-white/[0.08] text-neutral-300'
+                                      } border px-2.5 py-1 text-[11px] font-medium`}
+                                      title={`${attachment.name} · ${attachment.mimeType} · ${attachment.size} bytes`}
+                                    >
+                                      <Paperclip className="w-3.5 h-3.5 opacity-70" />
+                                      <span className="truncate max-w-[180px]">{attachment.name}</span>
+                                      <span className="text-[9px] opacity-60 tabular-nums">
+                                        {attachment.size < 1024 * 1024
+                                          ? `${(attachment.size / 1024).toFixed(0)} KB`
+                                          : `${(attachment.size / (1024 * 1024)).toFixed(1)} MB`}
+                                      </span>
+                                    </span>
+                                  ))}
+                              </div>
+                            )}
+                          </div>
+                        ) : null}
+                      </div>
+
+                      <div
+                        className={`mt-1 flex items-center gap-2 text-[11px] ${
+                          isLight ? 'text-neutral-400' : 'text-neutral-500'
+                        } opacity-0 group-hover:opacity-100 transition-opacity duration-200 select-none pr-1`}
+                      >
+                        {displayTime && <span className="font-sans tabular-nums">{displayTime}</span>}
+                        <button
+                          type="button"
+                          onClick={() => handleCopy(first.text || '', entry.id)}
+                          className={`p-1 rounded transition-colors hover:bg-black/5 dark:hover:bg-white/10 ${
+                            isLight ? 'text-neutral-500 hover:text-neutral-900' : 'text-neutral-400 hover:text-neutral-200'
+                          } flex items-center gap-1 text-[11px] font-medium cursor-pointer`}
+                          title="Copy input text"
+                          aria-label="Copy input text"
+                        >
+                          {copiedId === entry.id ? (
+                            <>
+                              <Check className="w-3.5 h-3.5 text-emerald-500" />
+                              <span className="text-emerald-500 text-[10.5px]">Copied</span>
+                            </>
+                          ) : (
+                            <Copy className="w-3.5 h-3.5" />
+                          )}
+                        </button>
+                      </div>
+                    </div>
+                  );
+                }
+
+                if (entry.kind === 'message') {
+                  const actor: ConversationActor | undefined = first.actor;
+                  const isSystem = actor?.type === 'system';
+                  const currentSpeakerKey = actorIdentityKey(actor);
+                  const showSpeakerHeader = !isSystem && currentSpeakerKey !== lastSpeakerKey;
+                  if (!isSystem) {
+                    lastSpeakerKey = currentSpeakerKey;
+                  }
+
+                  const presentation = actor?.type === 'mediobot'
+                    ? getMediobotPresentation(actor.presentationId ?? actor.mediobotId ?? actor.name, actor.name)
+                    : null;
+
+                  // Keep assistant prose calm and high-contrast neutral; signature specialist color lives on the avatar & header
+                  const botTextColor = isSystem
+                    ? (isLight ? 'text-neutral-500' : 'text-neutral-400')
+                    : (isLight ? 'text-[#18181b]' : 'text-[#e4e4e7]');
+
+                  const botNameColor = presentation
+                    ? (isLight ? presentation.lightText : presentation.darkText)
+                    : (isLight ? 'text-neutral-600' : 'text-neutral-400');
+
+                  const lastMessageIndex = entries.findLastIndex((e) => e.kind === 'message' && e.items[0]?.actor?.type !== 'system');
+                  const fallbackLastMessageIndex = entries.findLastIndex((e) => e.kind === 'message');
+                  const targetCopyIdx = lastMessageIndex >= 0 ? lastMessageIndex : fallbackLastMessageIndex;
+                  const isLastMessageInTurn = entryIndex === targetCopyIdx;
+
+                  const allAssistantMessages = entries.filter((e) => e.kind === 'message');
+                  const overallTurnText = allAssistantMessages
+                    .map((e) => e.items[0]?.text || '')
+                    .filter((t) => Boolean(t.trim()) && !t.startsWith('Using Gemini'))
+                    .join('\n\n') || allAssistantMessages.map((e) => e.items[0]?.text || '').join('\n\n');
+
+                  const botCursorColor = actor?.type === 'mediobot'
+                    ? getMediobotCursorColor(actor.presentationId ?? actor.mediobotId ?? actor.name?.toLowerCase(), isLight)
+                    : (isLight ? '#18181b' : '#f4f4f5');
+
+                  const isHistorical = typedMessageIds.current.has(first.id);
+                  const shouldAnimateTyping = !isHistorical && (turn.status === 'running' || (first.timestamp ? first.timestamp >= mountTimestamp.current - 2500 : true));
+
+                  return (
+                    <React.Fragment key={entry.id}>
+                      {isFirstAssistantEntry && (
+                        <TurnDurationHeader
+                          isRunning={isTurnRunning}
+                          turnStatus={turn.status}
+                          createdAt={turn.createdAt}
+                          completedAt={turn.completedAt}
+                          isLight={isLight}
+                          metrics={turnMetrics}
+                          activeTools={activeRunningTools}
+                          onJumpToChanges={() => {
+                            const changesEl = document.getElementById(`turn-changes-${turn.id}`);
+                            if (changesEl) {
+                              const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+                              changesEl.scrollIntoView({ behavior: reducedMotion ? 'auto' : 'smooth', block: 'nearest' });
+                            } else if (turnMetrics.diffItems[0]?.targetId) {
+                              scrollToTargetId(turnMetrics.diffItems[0].targetId);
+                            }
+                          }}
+                          onStopTurn={cancelTurn ? () => void cancelTurn(activeThread.id, turn.id) : undefined}
+                          onCopyTurn={turnOverallText ? () => handleCopy(turnOverallText, `turn-hdr-${turn.id}`) : undefined}
+                          copiedTurn={copiedId === `turn-hdr-${turn.id}`}
+                        />
+                      )}
+
+                      {isSystem ? (
+                        <div
+                          id={entry.targetId}
+                          ref={bindTarget(entry.targetId)}
+                          data-timeline-anchor="message"
+                          className={`scroll-mt-24 scroll-mb-24 text-[12px] leading-relaxed select-text ${
+                            isLight ? 'text-neutral-500' : 'text-neutral-400'
+                          }`}
+                        >
+                          {first.text}
+                        </div>
+                      ) : (
+                        <div
+                          id={entry.targetId}
+                          ref={bindTarget(entry.targetId)}
+                          data-timeline-anchor="message"
+                          className="group scroll-mt-24 scroll-mb-24"
+                        >
+                          {showSpeakerHeader && (
+                            <div className={`mb-1.5 flex items-center gap-2 text-[11.5px] font-medium ${botNameColor}`}>
+                              <MediobotAvatar actor={actor} size="sm" />
+                              <span>{conversationActorName(actor)}</span>
                             </div>
                           )}
 
-                          {/* Document and non-image badges */}
-                          {first.attachments.filter((a) => !a.mimeType.startsWith('image/')).length > 0 && (
-                            <div className="flex flex-wrap gap-1.5">
-                              {first.attachments
-                                .filter((a) => !a.mimeType.startsWith('image/'))
-                                .map((attachment) => (
-                                  <span
-                                    key={attachment.id}
-                                    className={`inline-flex items-center gap-1.5 rounded-lg ${
-                                      isLight
-                                        ? 'bg-white border-[#dcdce2] text-[#334155]'
-                                        : 'bg-[#19191d] border-[#383841] text-neutral-300'
-                                    } border px-2.5 py-1 text-[11px] font-medium shadow-2xs`}
-                                    title={`${attachment.name} · ${attachment.mimeType} · ${attachment.size} bytes`}
-                                  >
-                                    <Paperclip className="w-3.5 h-3.5 opacity-70" />
-                                    <span className="truncate max-w-[180px]">{attachment.name}</span>
-                                    <span className="text-[9px] opacity-60">
-                                      {attachment.size < 1024 * 1024
-                                        ? `${(attachment.size / 1024).toFixed(0)} KB`
-                                        : `${(attachment.size / (1024 * 1024)).toFixed(1)} MB`}
-                                    </span>
-                                  </span>
-                                ))}
+                          <div className={`text-[14px] ${botTextColor} leading-[1.6] select-text`}>
+                            <MarkdownContent
+                              content={first.text || ''}
+                              textColor={botTextColor}
+                              animateTyping={shouldAnimateTyping}
+                              cursorColor={botCursorColor}
+                              onTypingComplete={() => {
+                                typedMessageIds.current.add(first.id);
+                              }}
+                            />
+                          </div>
+
+                          {isLastMessageInTurn && (
+                            <div
+                              className={`mt-1 flex items-center gap-1.5 ${
+                                isLight ? 'text-neutral-400' : 'text-neutral-500'
+                              } opacity-0 group-hover:opacity-100 transition-opacity duration-200 select-none`}
+                            >
+                              <button
+                                type="button"
+                                onClick={() => handleCopy(overallTurnText, turn.id)}
+                                className={`p-1 rounded transition-colors hover:bg-black/5 dark:hover:bg-white/10 ${
+                                  isLight ? 'text-neutral-500 hover:text-neutral-900' : 'text-neutral-400 hover:text-neutral-200'
+                                } flex items-center gap-1 text-[11px] font-medium cursor-pointer`}
+                                title="Copy response"
+                                aria-label="Copy response"
+                              >
+                                {copiedId === turn.id ? (
+                                  <>
+                                    <Check className="w-3.5 h-3.5 text-emerald-500" />
+                                    <span className="text-emerald-500 text-[10.5px]">Copied</span>
+                                  </>
+                                ) : (
+                                  <Copy className="w-3.5 h-3.5" />
+                                )}
+                              </button>
                             </div>
                           )}
                         </div>
-                      ) : null}
-                    </div>
+                      )}
+                    </React.Fragment>
+                  );
+                }
 
-                    {/* Below the input chat component (Not inside it): Copy icon and time on hover */}
-                    <div
-                      className={`mt-1 flex items-center gap-2 text-[11px] ${
-                        isLight ? 'text-[#64748b]' : 'text-neutral-400'
-                      } opacity-0 group-hover:opacity-100 transition-opacity duration-200 select-none pr-1`}
-                    >
-                      {displayTime && <span className="font-sans">{displayTime}</span>}
-                      <button
-                        type="button"
-                        onClick={() => handleCopy(first.text || '', entry.id)}
-                        className={`p-1 rounded transition-colors hover:bg-black/5 dark:hover:bg-white/10 ${
-                          isLight ? 'text-[#64748b] hover:text-[#09090b]' : 'text-neutral-400 hover:text-neutral-200'
-                        } flex items-center gap-1 text-[11px] font-medium cursor-pointer`}
-                        title="Copy input text"
-                        aria-label="Copy input text"
-                      >
-                        {copiedId === entry.id ? (
-                          <>
-                            <Check className="w-3.5 h-3.5 text-emerald-500" />
-                            <span className="text-emerald-500 text-[10.5px]">Copied</span>
-                          </>
-                        ) : (
-                          <Copy className="w-3.5 h-3.5" />
-                        )}
-                      </button>
-                    </div>
-                  </div>
-                );
-              }
+                const isActiveGroup = isTurnRunning && entries[entries.length - 1]?.id === entry.id;
+                const tools = entry.items.filter((it) => it.type === 'tool_execution' && it.tool).map((it) => it.tool!);
+                const nonTools = entry.items.filter((it) => it.type !== 'tool_execution');
 
-              if (entry.kind === 'message') {
-                const actor: ConversationActor | undefined = first.actor;
-                const isSystem = actor?.type === 'system';
-                const presentation = actor?.type === 'mediobot'
-                  ? getMediobotPresentation(actor.presentationId ?? actor.mediobotId ?? actor.name, actor.name)
-                  : null;
-
-                // Each mediobot's signature theme color reflects on their messages and header across both Main Chat and specialist chats
-                const botTextColor = presentation
-                  ? (isLight ? presentation.lightText : presentation.darkText)
-                  : (isLight ? 'text-[#18181b]' : 'text-neutral-200');
-
-                const botNameColor = presentation
-                  ? (isLight ? presentation.lightText : presentation.darkText)
-                  : (isLight ? 'text-[#64748b]' : 'text-neutral-400');
-
-                const lastMessageIndex = entries.findLastIndex((e) => e.kind === 'message');
-                const isLastMessageInTurn = entryIndex === lastMessageIndex;
-
-                const allAssistantMessages = entries.filter((e) => e.kind === 'message');
-                const overallTurnText = allAssistantMessages
-                  .map((e) => e.items[0]?.text || '')
-                  .filter((t) => Boolean(t.trim()) && !t.startsWith('Using Gemini'))
-                  .join('\n\n') || allAssistantMessages.map((e) => e.items[0]?.text || '').join('\n\n');
-
-                const botCursorColor = actor?.type === 'mediobot'
-                  ? getMediobotCursorColor(actor.presentationId ?? actor.mediobotId ?? actor.name?.toLowerCase(), isLight)
-                  : (isLight ? '#18181b' : '#f4f4f5');
-
-                // Animate typing only the first time for newly arriving messages in the active session
-                const isHistorical = typedMessageIds.current.has(first.id);
-                const shouldAnimateTyping = !isHistorical && (turn.status === 'running' || (first.timestamp ? first.timestamp >= mountTimestamp.current - 2500 : true));
+                const shouldInsertTurnParallelMilestone = showTurnParallelMilestone && !renderedParallelMilestone;
+                if (shouldInsertTurnParallelMilestone) {
+                  renderedParallelMilestone = true;
+                }
 
                 return (
                   <React.Fragment key={entry.id}>
                     {isFirstAssistantEntry && (
                       <TurnDurationHeader
                         isRunning={isTurnRunning}
+                        turnStatus={turn.status}
                         createdAt={turn.createdAt}
                         completedAt={turn.completedAt}
                         isLight={isLight}
+                        metrics={turnMetrics}
+                        activeTools={activeRunningTools}
+                        onJumpToChanges={() => {
+                          const changesEl = document.getElementById(`turn-changes-${turn.id}`);
+                          if (changesEl) {
+                            const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+                            changesEl.scrollIntoView({ behavior: reducedMotion ? 'auto' : 'smooth', block: 'nearest' });
+                          } else if (turnMetrics.diffItems[0]?.targetId) {
+                            scrollToTargetId(turnMetrics.diffItems[0].targetId);
+                          }
+                        }}
+                        onStopTurn={cancelTurn ? () => void cancelTurn(activeThread.id, turn.id) : undefined}
+                        onCopyTurn={turnOverallText ? () => handleCopy(turnOverallText, `turn-hdr-${turn.id}`) : undefined}
+                        copiedTurn={copiedId === `turn-hdr-${turn.id}`}
                       />
                     )}
+
+                    {shouldInsertTurnParallelMilestone && (
+                      <TurnSpecialistMilestone
+                        specialists={turnSpecialists}
+                        isLight={isLight}
+                        getAgentPreference={getAgentPreference}
+                        onJumpToTarget={scrollToTargetId}
+                      />
+                    )}
+
                     <div
                       id={entry.targetId}
                       ref={bindTarget(entry.targetId)}
-                      data-timeline-anchor="message"
-                      className="group scroll-mt-24 scroll-mb-24 pl-1"
+                      data-timeline-anchor="activity"
+                      className="group scroll-mt-24 scroll-mb-24 my-1"
                     >
-                      <div className={`mb-1.5 flex items-center gap-2 text-[11px] font-semibold ${botNameColor}`}>
-                        <MediobotAvatar actor={actor} size="sm" />
-                        <span>{conversationActorName(actor)}</span>
-                        {isSystem && (
-                          <span
-                            className={`rounded border ${
-                              isLight
-                                ? 'border-[#dcdce2] text-[#64748b]'
-                                : 'border-white/10 text-neutral-500'
-                            } px-1.5 py-0.5 text-[9px] uppercase tracking-wide`}
-                          >
-                            Notice
-                          </span>
-                        )}
-                      </div>
-                      <div className={`text-sm ${botTextColor} leading-relaxed select-text`}>
-                        <MarkdownContent
-                          content={first.text || ''}
-                          textColor={botTextColor}
-                          animateTyping={shouldAnimateTyping}
-                          cursorColor={botCursorColor}
-                          onTypingComplete={() => {
-                            typedMessageIds.current.add(first.id);
-                          }}
+                      {/* Render tool executions cleanly as an unboxed Codex collapsible cluster */}
+                      {tools.length > 0 && (
+                        <CodexToolCluster
+                          tools={tools}
+                          defaultOpen={isSpecificMediobotChat || isActiveGroup}
                         />
-                      </div>
+                      )}
 
-                      {/* Overall turn response copy button: Shown ONCE on the final assistant response of this turn */}
-                      {isLastMessageInTurn && (
-                        <div
-                          className={`mt-1 flex items-center gap-1.5 ${
-                            isLight ? 'text-[#64748b]' : 'text-neutral-400'
-                          } opacity-0 group-hover:opacity-100 transition-opacity duration-200 select-none`}
-                        >
-                          <button
-                            type="button"
-                            onClick={() => handleCopy(overallTurnText, turn.id)}
-                            className={`p-1 rounded transition-colors hover:bg-black/5 dark:hover:bg-white/10 ${
-                              isLight ? 'text-[#64748b] hover:text-[#09090b]' : 'text-neutral-400 hover:text-neutral-200'
-                            } flex items-center gap-1 text-[11px] font-medium cursor-pointer`}
-                            title="Copy response"
-                            aria-label="Copy response"
-                          >
-                            {copiedId === turn.id ? (
-                              <>
-                                <Check className="w-3.5 h-3.5 text-emerald-500" />
-                                <span className="text-emerald-500 text-[10.5px]">Copied</span>
-                              </>
-                            ) : (
-                              <Copy className="w-3.5 h-3.5" />
-                            )}
-                          </button>
+                      {/* Render diffs, approvals, perceptions, compactions, or detailed activities */}
+                      {nonTools.length > 0 && (
+                        <div className="space-y-1 mt-0.5">
+                          {nonTools.map((item) => (
+                            <ActivityItem
+                              key={item.id}
+                              item={item}
+                              turnId={turn.id}
+                              turnStatus={turn.status}
+                              isActive={Boolean(isActiveGroup && item === entry.items[entry.items.length - 1])}
+                              isMainChat={isMainChat}
+                            />
+                          ))}
                         </div>
                       )}
                     </div>
                   </React.Fragment>
                 );
-              }
+              })}
 
-              const isActiveGroup = isTurnRunning && entries[entries.length - 1]?.id === entry.id;
-              const tools = entry.items.filter((it) => it.type === 'tool_execution' && it.tool).map((it) => it.tool!);
-              const nonTools = entry.items.filter((it) => it.type !== 'tool_execution');
+              {!isTurnRunning && turnMetrics.diffItems.length > 0 && (
+                <div
+                  id={`turn-changes-${turn.id}`}
+                  data-testid={`turn-changed-files-${turn.id}`}
+                  className={`mt-2 rounded-lg border overflow-hidden text-[12px] ${
+                    isLight
+                      ? 'border-black/[0.08] bg-[#fafafa]'
+                      : 'border-white/[0.08] bg-[#161619]'
+                  }`}
+                >
+                  <div
+                    className={`px-3 py-1.5 border-b flex items-center justify-between gap-3 text-[11.5px] font-sans ${
+                      isLight
+                        ? 'border-black/[0.06] text-neutral-600'
+                        : 'border-white/[0.06] text-neutral-400'
+                    }`}
+                  >
+                    <span className="font-medium">
+                      Files changed ({turnMetrics.diffItems.length})
+                    </span>
+                    <span className="font-mono tabular-nums text-[11px] flex items-center gap-1.5">
+                      <span className={isLight ? 'text-emerald-700' : 'text-emerald-400/90'}>+{turnMetrics.totalAdditions}</span>
+                      <span className={isLight ? 'text-rose-700' : 'text-rose-400/90'}>-{turnMetrics.totalDeletions}</span>
+                    </span>
+                  </div>
+                  <div className={`divide-y ${isLight ? 'divide-black/[0.05]' : 'divide-white/[0.05]'}`}>
+                    {turnMetrics.diffItems.map(({ item, diff, targetId }) => {
+                      const adds = diff.truncated
+                        ? diff.additions
+                        : diff.hunks?.reduce((acc, h) => acc + h.lines.filter((l) => l.type === 'add').length, 0) ?? diff.additions;
+                      const dels = diff.truncated
+                        ? diff.deletions
+                        : diff.hunks?.reduce((acc, h) => acc + h.lines.filter((l) => l.type === 'remove').length, 0) ?? diff.deletions;
+                      const stateLabel =
+                        diff.state === 'verified'
+                          ? 'Verified (Simulated)'
+                          : diff.state === 'applied'
+                          ? 'Applied (Simulated)'
+                          : diff.state === 'rejected'
+                          ? 'Rejected'
+                          : 'Proposed';
 
-              return (
-                <React.Fragment key={entry.id}>
-                  {isFirstAssistantEntry && (
-                    <TurnDurationHeader
-                      isRunning={isTurnRunning}
-                      createdAt={turn.createdAt}
-                      completedAt={turn.completedAt}
+                      return (
+                        <div
+                          key={item.id}
+                          className={`px-3 py-1.5 flex items-center justify-between gap-3 ${
+                            isLight ? 'hover:bg-black/[0.02]' : 'hover:bg-white/[0.02]'
+                          }`}
+                        >
+                          <div className="flex items-center gap-2 min-w-0">
+                            <FileCode className={`w-3.5 h-3.5 shrink-0 ${isLight ? 'text-neutral-400' : 'text-neutral-500'}`} />
+                            <button
+                              type="button"
+                              onClick={() => openFileTab(diff.filePath)}
+                              className={`font-mono truncate cursor-pointer hover:underline ${
+                                isLight ? 'text-neutral-800 hover:text-sky-700' : 'text-neutral-200 hover:text-sky-300'
+                              }`}
+                              title={`Open ${diff.filePath} in editor`}
+                            >
+                              {diff.filePath}
+                            </button>
+                            <span
+                              className={`text-[11px] font-sans shrink-0 ${
+                                diff.state === 'verified'
+                                  ? isLight ? 'text-emerald-700' : 'text-emerald-400/80'
+                                  : diff.state === 'rejected'
+                                  ? 'text-rose-400'
+                                  : isLight ? 'text-neutral-500' : 'text-neutral-500'
+                              }`}
+                            >
+                              {stateLabel}
+                            </span>
+                          </div>
+
+                          <div className="flex items-center gap-3 shrink-0 text-[11px] font-sans tabular-nums">
+                            <span className="font-mono flex items-center gap-1">
+                              <span className={isLight ? 'text-emerald-700' : 'text-emerald-400/90'}>+{adds}</span>
+                              <span className={isLight ? 'text-rose-700' : 'text-rose-400/90'}>-{dels}</span>
+                            </span>
+                            {targetId && (
+                              <button
+                                type="button"
+                                onClick={() => scrollToTargetId(targetId)}
+                                className={`cursor-pointer transition-colors ${
+                                  isLight ? 'text-neutral-500 hover:text-neutral-900' : 'text-neutral-400 hover:text-neutral-100'
+                                }`}
+                              >
+                                Inspect diff
+                              </button>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => openFileTab(diff.filePath)}
+                              className={`inline-flex items-center gap-1 cursor-pointer transition-colors ${
+                                isLight ? 'text-sky-700 hover:underline' : 'text-sky-400 hover:underline'
+                              }`}
+                            >
+                              <span>Open</span>
+                              <ExternalLink className="w-2.5 h-2.5" />
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {isTurnRunning && activeRunningTools.length > 0 && (
+                <div
+                  data-testid="active-tool-call-strip"
+                  className="flex flex-wrap items-center gap-2 py-1 select-none"
+                >
+                  {activeRunningTools.slice(0, 3).map((tool, rIdx) => {
+                    const parsed = parseToolAction(tool, `live-${rIdx}`);
+                    const details = extractAllowlistToolDetails(tool);
+                    const meta = mapActionToCallChip(parsed, details.commandDescription);
+                    return (
+                      <CallChip
+                        key={parsed.id}
+                        icon={meta.icon}
+                        name={meta.name}
+                        argument={meta.argument}
+                        status="running"
+                        expectedMs={meta.expectedMs}
+                        startedAt={tool.startedAt}
+                        size={26}
+                        radius={7}
+                        color={isLight ? '#18181b' : '#e4e4e7'}
+                        surfaceColor={isLight ? '#f4f4f6' : '#1e1e23'}
+                        borderColor={isLight ? 'rgba(0, 0, 0, 0.08)' : 'rgba(255, 255, 255, 0.08)'}
+                        progressColor={isLight ? '#09090b' : '#ffffff'}
+                        progressOpacity={isLight ? 0.06 : 0.08}
+                        doneColor={isLight ? '#16a34a' : '#22c55e'}
+                        errorColor={isLight ? '#dc2626' : '#ef4444'}
+                        showTimer
+                      />
+                    );
+                  })}
+                  {activeRunningTools.length > 3 && (
+                    <span className={`text-[11px] font-sans tabular-nums ${isLight ? 'text-neutral-500' : 'text-neutral-400'}`}>
+                      +{activeRunningTools.length - 3} more running
+                    </span>
+                  )}
+                </div>
+              )}
+
+              {isTurnRunning && hasAssistantEntries && (
+                <ParallelModelGuidanceStrip activeTurnRunning={isTurnRunning} threadId={activeThread.id} />
+              )}
+
+              {isTurnRunning && entries.every((e) => e.kind === 'user') && (
+                <>
+                  <TurnDurationHeader
+                    isRunning={true}
+                    turnStatus={turn.status}
+                    createdAt={turn.createdAt}
+                    isLight={isLight}
+                    activeTools={activeRunningTools}
+                    onStopTurn={cancelTurn ? () => void cancelTurn(activeThread.id, turn.id) : undefined}
+                  />
+                  <div className="py-1 select-none">
+                    <ThoughtLine
+                      working={true}
+                      label={turn.status === 'pause_requested' ? 'Pausing at checkpoint…' : 'Thinking…'}
+                      doneLabel="Thought for"
+                      glyph="sparkle"
+                      startedAt={turn.createdAt}
+                      collapsible={false}
+                      showTimer={true}
+                      fontSize={13.5}
+                      breathPeriod={1.6}
+                      breathDepth={0.45}
+                      shimmer={true}
                       isLight={isLight}
                     />
-                  )}
-                  <div
-                    id={entry.targetId}
-                    ref={bindTarget(entry.targetId)}
-                    data-timeline-anchor="activity"
-                    className="group scroll-mt-24 scroll-mb-24 pl-1 my-1.5"
-                  >
-                    {/* Render tool executions cleanly as a Codex collapsible cluster */}
-                    {tools.length > 0 && (
-                      <CodexToolCluster
-                        tools={tools}
-                        defaultOpen={isSpecificMediobotChat || isActiveGroup}
-                      />
-                    )}
-
-                    {/* Render diffs, approvals, perceptions, or genuine detailed activities */}
-                    {nonTools.length > 0 && (
-                      <div className="space-y-1 mt-1">
-                        {nonTools.map((item) => (
-                          <ActivityItem
-                            key={item.id}
-                            item={item}
-                            turnId={turn.id}
-                            turnStatus={turn.status}
-                            isActive={Boolean(isActiveGroup && item === entry.items[entry.items.length - 1])}
-                            isMainChat={isMainChat}
-                          />
-                        ))}
-                      </div>
-                    )}
                   </div>
-                </React.Fragment>
-              );
-            })}
-            {isTurnRunning && entries.every(e => e.kind === 'user') && (
-              <div className={`pl-3 border-l ${isLight ? 'border-[#e2e4e8]' : 'border-[#27272f]'}`}>
-                <div className={`flex items-center gap-2 py-1 text-xs ${isLight ? 'text-[#64748b]' : 'text-neutral-400'}`}>
-                  <LatticeLoader
-                    status="working"
-                    label="Deciding"
-                    color={isLight ? '#475569' : '#a1a1aa'}
-                    fontSize={11}
-                    cellSize={3}
-                    gap={1.5}
-                    showTimer={false}
-                  />
-                </div>
-              </div>
-            )}
-          </div>;
+                </>
+              )}
+            </div>
+          );
         })}
         <div ref={messagesEndRef} className="h-6" />
       </div>
 
-      {anchors.length > 0 && <TimelineNavigator anchors={anchors} scrollRoot={scrollRoot} targets={targetElements} />}
+      {anchors.length > 0 && (
+        <TimelineNavigator
+          anchors={anchors}
+          scrollRoot={scrollRoot}
+          targets={targetElements}
+          turnMetaByTargetId={turnMetaByTargetId}
+        />
+      )}
 
       <div className={`w-full pb-4 pt-2 ${
         isLight
@@ -777,4 +1352,5 @@ export const ThreadView: React.FC = () => {
     </div>
   );
 };
+
 
